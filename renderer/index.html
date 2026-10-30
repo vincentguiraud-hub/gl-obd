@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>G&amp;L Diag</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<aside class="side">
+  <div class="brand">
+    <img src="logo.svg" alt="">
+    <div><b>G&amp;L Diag</b><small>Diagnostic OBD</small></div>
+  </div>
+  <nav id="nav">
+    <a data-page="connexion" class="active"><i>⚡</i>Connexion</a>
+    <a data-page="defauts"><i>⚠</i>Défauts moteur (OBD)</a>
+    <a data-page="vag"><i>▦</i>Calculateurs VW / Audi</a>
+    <a data-page="live"><i>◔</i>Données en direct</a>
+    <a data-page="ct"><i>✓</i>Préparation CT</a>
+    <a data-page="freeze"><i>❄</i>Arrêt sur image</a>
+    <a data-page="rapports"><i>▤</i>Rapports &amp; historique</a>
+    <a data-page="terminal"><i>›_</i>Terminal ELM327</a>
+  </nav>
+  <div class="side-foot" id="version">G&amp;L Créations</div>
+</aside>
+
+<main>
+  <header class="top">
+    <div class="pill" id="statusPill"><span class="dot"></span><span id="statusText">Déconnecté</span></div>
+    <div class="veh" id="vehSummary">Aucun véhicule</div>
+    <div class="volt" id="voltBox" title="Tension batterie mesurée par l'adaptateur"></div>
+    <div id="updateBanner" class="update hidden"></div>
+  </header>
+
+  <!-- CONNEXION -->
+  <section class="page" id="page-connexion">
+    <h1>Connexion à l'adaptateur</h1>
+    <div class="grid2">
+      <div class="card">
+        <h2>1. Type d'adaptateur ELM327</h2>
+        <div class="choices" id="connTypes">
+          <label class="choice"><input type="radio" name="ctype" value="serial" checked><b>Bluetooth</b><small>Appairé dans Windows (port COM)</small></label>
+          <label class="choice"><input type="radio" name="ctype" value="wifi"><b>WiFi</b><small>PC connecté au WiFi de l'adaptateur</small></label>
+          <label class="choice"><input type="radio" name="ctype" value="ble"><b>Bluetooth BLE</b><small>Modèles « iPhone / 4.0 / LE »</small></label>
+          <label class="choice"><input type="radio" name="ctype" value="demo"><b>Mode démo</b><small>Essayer sans voiture</small></label>
+        </div>
+
+        <div class="opts" id="opt-serial">
+          <label>Port COM
+            <div class="row"><select id="portSel"></select><button class="btn ghost" id="refreshPorts" title="Actualiser">↻</button></div>
+          </label>
+          <label>Vitesse (seulement pour les câbles USB)
+            <select id="baudSel"><option>38400</option><option>9600</option><option>115200</option><option>230400</option><option>500000</option></select>
+          </label>
+        </div>
+        <div class="opts hidden" id="opt-wifi">
+          <div class="row">
+            <label class="grow">Adresse IP <input id="wifiHost" value="192.168.0.10"></label>
+            <label>Port <input id="wifiPort" value="35000" size="6"></label>
+          </div>
+        </div>
+        <div class="opts hidden" id="opt-ble">
+          <p class="muted">Clique sur « Se connecter » : la liste des appareils Bluetooth à proximité s'affiche, choisis ton adaptateur (souvent « OBDII », « IOS-Vlink », « Vgate », « VEEPEAK »…).</p>
+        </div>
+        <div class="opts hidden" id="opt-demo">
+          <p class="muted">Simule un VW Crafter 2019 2.0 TDI avec quelques défauts, pour découvrir le logiciel.</p>
+        </div>
+
+        <div class="row mt">
+          <button class="btn primary big" id="connectBtn">Se connecter</button>
+          <button class="btn ghost hidden" id="disconnectBtn">Déconnecter</button>
+        </div>
+        <p class="err hidden" id="connErr"></p>
+      </div>
+
+      <div class="card help" id="helpBox"></div>
+    </div>
+
+    <div class="card hidden" id="vehCard">
+      <div class="row between"><h2>Véhicule détecté</h2><button class="btn primary" id="fullScanBtn">▶ Diagnostic complet</button></div>
+      <div class="kv" id="vehKv"></div>
+      <div class="progress hidden" id="fullProg"><div></div><span></span></div>
+    </div>
+  </section>
+
+  <!-- DÉFAUTS OBD -->
+  <section class="page hidden" id="page-defauts">
+    <div class="row between">
+      <h1>Défauts moteur / antipollution (OBD)</h1>
+      <div class="row">
+        <button class="btn primary" id="readDtcBtn">Lire les défauts</button>
+        <button class="btn danger" id="clearDtcBtn">Effacer les défauts</button>
+      </div>
+    </div>
+    <p class="muted">Codes génériques lus sur toutes les marques (norme OBD-II). Pour les autres calculateurs (ABS, airbag, tableau de bord…) d'un véhicule du groupe VW, va dans « Calculateurs VW / Audi ».</p>
+    <div id="dtcOut"><div class="empty">Clique sur « Lire les défauts ».</div></div>
+  </section>
+
+  <!-- VAG -->
+  <section class="page hidden" id="page-vag">
+    <div class="row between">
+      <h1>Calculateurs VW · Audi · Seat · Škoda · MAN</h1>
+      <div class="row">
+        <button class="btn primary" id="vagScanAll">Scanner tous les calculateurs</button>
+        <button class="btn ghost" id="vagDiscover" title="Balaye toutes les adresses pour trouver les calculateurs présents">Recherche étendue</button>
+      </div>
+    </div>
+    <p class="muted" id="vagNote">Fonctionne sur les véhicules récents du groupe VW (plateforme MQB et suivantes, environ 2013 et plus : Golf 7/8, Polo 6, Passat B8, Tiguan 2, A3 8V, Leon 3, Octavia 3, Crafter 2017+, MAN TGE…).</p>
+    <div class="progress hidden" id="vagProg"><div></div><span></span></div>
+    <div class="split">
+      <div class="card flush"><table class="tbl" id="vagTable"><thead><tr><th>Adr.</th><th>Calculateur</th><th>État</th></tr></thead><tbody></tbody></table></div>
+      <div class="card" id="vagDetail"><div class="empty">Sélectionne un calculateur, ou lance « Scanner tous les calculateurs ».</div></div>
+    </div>
+  </section>
+
+  <!-- LIVE -->
+  <section class="page hidden" id="page-live">
+    <div class="row between">
+      <h1>Données en direct</h1>
+      <div class="row">
+        <span class="muted" id="liveRate"></span>
+        <button class="btn ghost" id="liveCsv">Exporter en CSV (Excel)</button>
+        <button class="btn primary" id="liveStart">▶ Démarrer</button>
+      </div>
+    </div>
+    <div class="split live">
+      <div class="card">
+        <h2>Paramètres</h2>
+        <div class="row wrap presets">
+          <button class="btn mini" data-preset="moteur">Moteur</button>
+          <button class="btn mini" data-preset="diesel">Diesel / turbo</button>
+          <button class="btn mini" data-preset="temp">Températures</button>
+          <button class="btn mini" data-preset="none">Aucun</button>
+        </div>
+        <div id="pidList" class="pidlist"><div class="empty">Connecte-toi pour voir les paramètres disponibles.</div></div>
+      </div>
+      <div id="tiles" class="tiles"></div>
+    </div>
+  </section>
+
+  <!-- CT -->
+  <section class="page hidden" id="page-ct">
+    <div class="row between"><h1>Préparation au contrôle technique</h1><button class="btn primary" id="ctBtn">Vérifier</button></div>
+    <p class="muted">Après un effacement des défauts ou un débranchement de batterie, les tests antipollution doivent se refaire en roulant (souvent 50 à 200 km, ville + route). Tant qu'ils ne sont pas terminés, le contrôle de l'opacité / OBD peut être refusé.</p>
+    <div id="ctOut"><div class="empty">Clique sur « Vérifier ».</div></div>
+  </section>
+
+  <!-- FREEZE -->
+  <section class="page hidden" id="page-freeze">
+    <div class="row between"><h1>Arrêt sur image</h1><button class="btn primary" id="ffBtn">Lire</button></div>
+    <p class="muted">Valeurs enregistrées par le calculateur moteur au moment où le premier défaut est apparu (régime, température, vitesse…). Utile pour comprendre dans quelles conditions la panne arrive.</p>
+    <div id="ffOut"><div class="empty">Clique sur « Lire ».</div></div>
+  </section>
+
+  <!-- RAPPORTS -->
+  <section class="page hidden" id="page-rapports">
+    <div class="row between"><h1>Rapports &amp; historique</h1><button class="btn primary" id="pdfBtn">Créer le rapport PDF du diagnostic en cours</button></div>
+    <div class="card">
+      <h2>Informations pour le rapport</h2>
+      <div class="row wrap">
+        <label class="grow">Client / véhicule <input id="repClient" placeholder="ex. M. Dupont – Crafter AB-123-CD"></label>
+        <label>Kilométrage <input id="repKm" placeholder="km" size="10"></label>
+      </div>
+      <label>Remarques <textarea id="repNotes" rows="2" placeholder="Travaux conseillés, observations…"></textarea></label>
+    </div>
+    <h2>Historique des diagnostics</h2>
+    <div id="histOut"></div>
+  </section>
+
+  <!-- TERMINAL -->
+  <section class="page hidden" id="page-terminal">
+    <h1>Terminal ELM327</h1>
+    <p class="muted">Pour les utilisateurs avancés : envoie des commandes AT ou OBD à la main (ex. <code>ATRV</code>, <code>0100</code>, <code>ATSH7E0</code>). Le journal ci-dessous montre aussi tout ce que fait le logiciel.</p>
+    <div class="term" id="termOut"></div>
+    <div class="row mt"><input id="termIn" class="grow mono" placeholder="Commande…"><button class="btn primary" id="termSend">Envoyer</button><button class="btn ghost" id="termClear">Vider</button></div>
+  </section>
+</main>
+
+<div class="modal hidden" id="modal"><div class="modal-box"><h2 id="modalTitle"></h2><div id="modalBody"></div><div class="row end mt" id="modalBtns"></div></div></div>
+<div class="toast hidden" id="toast"></div>
+<script src="report.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
