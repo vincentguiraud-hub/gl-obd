@@ -110,7 +110,7 @@ class Vag {
       const ftb = ftbText(c);
       out.push({
         code: `${code} ${c.toString(16).toUpperCase().padStart(2, "0")}`,
-        base: code,
+        base: code, raw3: [a, b, c],
         ftb: c,
         ftbText: ftb,
         status: statusInfo(s),

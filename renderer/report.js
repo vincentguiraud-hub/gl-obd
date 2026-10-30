@@ -24,6 +24,8 @@ function buildReport(e) {
   const ff = e.freeze && e.freeze.dtc
     ? `<h2>Arrêt sur image (défaut ${esc(e.freeze.dtc.code)})</h2><table class="two"><tbody>${e.freeze.values.map((v) => `<tr><td>${esc(v.name)}</td><td><b>${fmt(v.value, v.dec ?? 1)}</b> ${esc(v.unit)}</td></tr>`).join("")}</tbody></table>` : "";
 
+  const m6 = (e.mode06 || []).filter((t) => !t.pass);
+  const m6b = e.mode06 && e.mode06.length ? `<h2>Autotests antipollution (mode 06)</h2>${m6.length ? `<table><thead><tr><th>Système</th><th>Mesure</th><th>Limites</th></tr></thead><tbody>${m6.map((t) => `<tr><td class="bad">${esc(t.name)}</td><td>${fmt(t.value, 2)} ${esc(t.unit)}</td><td>${fmt(t.min, 2)} – ${fmt(t.max, 2)}</td></tr>`).join("")}</tbody></table>` : `<p class="ok">✓ Les ${e.mode06.length} autotests sont dans les limites.</p>`}` : "";
   const ready = r ? `<h2>Tests antipollution (contrôle technique)</h2>
     <p>Voyant moteur : <b class="${r.mil ? "bad" : "okc"}">${r.mil ? "ALLUMÉ" : "éteint"}</b> · Distance depuis effacement : ${fmt(r.distanceSinceClear)} km</p>
     <table class="two"><tbody>${r.monitors.map((m) => `<tr><td>${esc(m.name)}</td><td class="${m.complete ? "okc" : "warnc"}">${m.complete ? "✓ Terminé" : "… Non terminé"}</td></tr>`).join("")}</tbody></table>` : "";
@@ -61,7 +63,7 @@ function buildReport(e) {
   ${e.notes ? `<h2>Remarques</h2><div class="notes">${esc(e.notes)}</div>` : ""}
   <h2>${e.truck ? "Défauts poids lourd (J1939)" : "Défauts moteur / antipollution (OBD)"}</h2>${obdBlock}
   <h2>Calculateurs</h2>${modBlock}
-  ${ff}${ready}
+  ${ff}${m6b}${ready}
   <div class="ft">Rapport généré par G&amp;L Diag${e.demo ? " – MODE DÉMONSTRATION (données simulées)" : ""}. Les codes défaut indiquent la zone de la panne détectée par le calculateur ; un contrôle des composants est nécessaire avant tout remplacement de pièce.</div>
   </body></html>`;
 }

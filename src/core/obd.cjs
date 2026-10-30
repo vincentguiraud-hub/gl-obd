@@ -210,6 +210,63 @@ class Obd {
     };
   }
 
+  async mode06() {
+    const mids = [];
+    for (const base of [0x00, 0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0, 0xe0]) {
+      if (base && !mids.includes(base)) break;
+      let msgs;
+      try { msgs = await this.elm.request("06" + base.toString(16).padStart(2, "0").toUpperCase(), 3000); } catch { break; }
+      const m = msgs.find((x) => x.data[0] === 0x46 && x.data[1] === base);
+      if (!m) break;
+      mids.push(...bitmapPids(m.data.slice(2, 6), base));
+    }
+    const tests = [];
+    for (const mid of mids.filter((x) => x % 0x20 !== 0)) {
+      let msgs;
+      try { msgs = await this.elm.request("06" + mid.toString(16).padStart(2, "0").toUpperCase(), 3000); } catch { continue; }
+      for (const m of msgs) {
+        if (m.data[0] !== 0x46 || m.data[1] !== mid) continue;
+        // chaque résultat : MID, n° de test, unité, valeur, min, max (9 octets)
+        const d = m.data.slice(1);
+        for (let i = 0; i + 8 < d.length; i += 9) {
+          if (d[i] !== mid) continue;
+          const tid = d[i + 1], uas = d[i + 2];
+          const sc = UAS[uas] || [1, "", 0];
+          const rd = (k) => { let v = (d[i + k] << 8) | d[i + k + 1]; if (sc[3] && v > 32767) v -= 65536; return v; };
+          const val = rd(3), min = rd(5), max = rd(7);
+          const f = (v) => v * sc[0] + (sc[2] || 0);
+          tests.push({ mid, name: midName(mid), tid, value: f(val), min: f(min), max: f(max), unit: sc[1], known: !!UAS[uas], pass: val >= min && val <= max });
+        }
+      }
+    }
+    return tests;
+  }
+
+  async mode09() {
+    const res = { calids: [], cvns: [], iupr: null };
+    const get = async (pid) => { try { return (await this.elm.request("09" + pid, 6000)).filter((m) => m.data[0] === 0x49 && m.data[1] === parseInt(pid, 16)); } catch { return []; } };
+    for (const m of await get("04")) {
+      const d = m.data.slice(3);
+      for (let i = 0; i + 15 < d.length + 0; i += 16) res.calids.push({ ecu: m.id, text: String.fromCharCode(...d.slice(i, i + 16).filter((b) => b >= 0x20 && b < 0x7f)).trim() });
+    }
+    for (const m of await get("06")) {
+      const d = m.data.slice(3);
+      for (let i = 0; i + 3 < d.length; i += 4) res.cvns.push({ ecu: m.id, hex: d.slice(i, i + 4).map((b) => b.toString(16).toUpperCase().padStart(2, "0")).join("") });
+    }
+    for (const [pid, names, type] of [["08", IUPR_GAS, "essence"], ["0B", IUPR_DIESEL, "diesel"]]) {
+      const m = (await get(pid))[0];
+      if (!m) continue;
+      const d = m.data.slice(3), vals = [];
+      for (let i = 0; i + 1 < d.length; i += 2) vals.push((d[i] << 8) | d[i + 1]);
+      const rows = [{ name: names[0], comp: vals[0] }, { name: names[1], comp: vals[1] }];
+      for (let i = 2; i + 1 < vals.length && i + 1 < names.length; i += 2) {
+        rows.push({ name: names[i].replace(" (réalisés)", ""), comp: vals[i], cond: vals[i + 1], ratio: vals[i + 1] ? vals[i] / vals[i + 1] : null });
+      }
+      res.iupr = { type, rows };
+    }
+    return res;
+  }
+
   async freezeFrame() {
     const out = { dtc: null, values: [] };
     try {
@@ -231,6 +288,49 @@ class Obd {
     return out;
   }
 }
+
+// ---- Mode 06 : résultats des tests embarqués (valeur mesurée / limites) ----
+const UAS = {
+  0x01: [1, ""], 0x02: [0.1, ""], 0x03: [0.01, ""], 0x04: [0.001, ""], 0x05: [0.0000305, ""], 0x06: [0.000305, ""],
+  0x07: [0.25, "tr/min"], 0x08: [0.01, "km/h"], 0x09: [1, "km/h"], 0x0a: [0.122, "mV"], 0x0b: [0.001, "V"], 0x0c: [0.01, "V"],
+  0x0d: [0.00390625, "mA"], 0x0e: [0.001, "A"], 0x0f: [0.01, "A"], 0x10: [1, "ms"], 0x11: [100, "ms"], 0x12: [1, "s"],
+  0x13: [1, "mΩ"], 0x14: [1, "Ω"], 0x15: [1, "kΩ"], 0x16: [0.1, "°C", -40], 0x17: [0.01, "kPa"], 0x18: [0.0117, "kPa"],
+  0x19: [0.079, "kPa"], 0x1a: [1, "kPa"], 0x1b: [10, "kPa"], 0x1c: [0.01, "°"], 0x1d: [0.5, "°"], 0x1e: [0.0000305, "λ"],
+  0x1f: [0.05, "AFR"], 0x20: [0.0039062, ""], 0x21: [1, "mHz"], 0x22: [1, "Hz"], 0x23: [1, "kHz"], 0x24: [1, "coups"],
+  0x25: [1, "km"], 0x26: [0.1, "mV/ms"], 0x27: [0.01, "g/s"], 0x28: [1, "g/s"], 0x29: [0.25, "Pa/s"], 0x2a: [0.001, "kg/h"],
+  0x2b: [1, "commutations"], 0x2c: [0.01, "g/cyl"], 0x2d: [0.01, "mg/coup"], 0x2f: [0.01, "%"], 0x30: [0.001526, "%"],
+  0x31: [0.001, "L"], 0x34: [1, "min"], 0x35: [10, "ms"],
+  0x81: [1, "", 0, true], 0x82: [0.1, "", 0, true], 0x83: [0.01, "", 0, true], 0x84: [0.001, "", 0, true], 0x85: [0.0000305, "", 0, true],
+  0x86: [0.000305, "", 0, true], 0x8a: [0.122, "mV", 0, true], 0x8b: [0.001, "V", 0, true], 0x8c: [0.01, "V", 0, true],
+  0x8d: [0.00390625, "mA", 0, true], 0x8e: [0.001, "A", 0, true], 0x90: [1, "ms", 0, true], 0x96: [0.1, "°C", 0, true],
+  0x9c: [0.01, "°", 0, true], 0x9d: [0.5, "°", 0, true], 0xa8: [1, "g/s", 0, true], 0xa9: [0.25, "Pa/s", 0, true],
+  0xaf: [0.01, "%", 0, true], 0xb0: [0.003052, "%", 0, true], 0xb1: [2, "mV/s", 0, true], 0xfc: [0.01, "kPa", 0, true],
+  0xfd: [0.001, "kPa", 0, true], 0xfe: [0.25, "Pa", 0, true],
+};
+function midName(mid) {
+  if (mid >= 0x01 && mid <= 0x10) return `Sonde lambda banc ${mid <= 0x04 ? 1 : mid <= 0x08 ? 2 : mid <= 0x0c ? 3 : 4} capteur ${((mid - 1) % 4) + 1}`;
+  if (mid >= 0x21 && mid <= 0x24) return `Catalyseur banc ${mid - 0x20}`;
+  if (mid >= 0x31 && mid <= 0x38) return `EGR / distribution variable n°${mid - 0x30}`;
+  if (mid >= 0x39 && mid <= 0x3d) return ["Fuite EVAP 0,150\"", "Fuite EVAP 0,090\"", "Fuite EVAP 0,040\"", "Fuite EVAP 0,020\"", "Débit de purge EVAP"][mid - 0x39];
+  if (mid >= 0x41 && mid <= 0x50) return `Chauffage sonde lambda banc ${mid <= 0x44 ? 1 : mid <= 0x48 ? 2 : mid <= 0x4c ? 3 : 4} capteur ${((mid - 0x41) % 4) + 1}`;
+  if (mid >= 0x61 && mid <= 0x64) return `Catalyseur chauffé banc ${mid - 0x60}`;
+  if (mid >= 0x71 && mid <= 0x74) return `Air secondaire n°${mid - 0x70}`;
+  if (mid >= 0x81 && mid <= 0x84) return `Système carburant banc ${mid - 0x80}`;
+  if (mid >= 0x85 && mid <= 0x86) return `Suralimentation banc ${mid - 0x84}`;
+  if (mid >= 0x90 && mid <= 0x91) return `Piège à NOx banc ${mid - 0x8f}`;
+  if (mid >= 0x98 && mid <= 0x99) return `Catalyseur NOx / SCR banc ${mid - 0x97}`;
+  if (mid >= 0xa1 && mid <= 0xad) return mid === 0xa1 ? "Ratés de combustion – général" : mid === 0xa2 ? "Ratés de combustion – tous cylindres" : `Ratés de combustion cylindre ${mid - 0xa2}`;
+  if (mid >= 0xb0 && mid <= 0xb1) return `Filtre à particules (FAP) banc ${mid - 0xaf}`;
+  return `Test 0x${mid.toString(16).toUpperCase()}`;
+}
+
+// ---- Mode 09 : IUPR (fréquence de réalisation des tests) ----
+const IUPR_GAS = ["Conditions OBD remplies", "Démarrages", "Catalyseur B1 (réalisés)", "Catalyseur B1 (conditions)", "Catalyseur B2 (réalisés)", "Catalyseur B2 (conditions)",
+  "Sonde lambda B1 (réalisés)", "Sonde lambda B1 (conditions)", "Sonde lambda B2 (réalisés)", "Sonde lambda B2 (conditions)", "EGR/VVT (réalisés)", "EGR/VVT (conditions)",
+  "Air secondaire (réalisés)", "Air secondaire (conditions)", "EVAP (réalisés)", "EVAP (conditions)", "Sonde aval B1 (réalisés)", "Sonde aval B1 (conditions)", "Sonde aval B2 (réalisés)", "Sonde aval B2 (conditions)"];
+const IUPR_DIESEL = ["Conditions OBD remplies", "Démarrages", "Catalyseur HC (réalisés)", "Catalyseur HC (conditions)", "Catalyseur NOx/SCR (réalisés)", "Catalyseur NOx/SCR (conditions)",
+  "Piège NOx (réalisés)", "Piège NOx (conditions)", "FAP (réalisés)", "FAP (conditions)", "Capteur gaz échappement (réalisés)", "Capteur gaz échappement (conditions)",
+  "Suralimentation (réalisés)", "Suralimentation (conditions)", "EGR/VVT (réalisés)", "EGR/VVT (conditions)"];
 
 // Décodage du VIN : marque et année modèle
 const WMI = {

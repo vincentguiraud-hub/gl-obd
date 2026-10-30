@@ -56,6 +56,28 @@ const api = {
   vagClear: (m) => diag.vagClear(m),
   vagDiscover: () => diag.vagDiscover((p, addr) => send("progress", { p, addr })),
   raw: (cmd) => diag.raw(cmd),
+  atelier: (op, m, ...args) => diag.atelier(op, m, ...args),
+  scanDids: (m, from, to) => diag.scanDids(m, from, to, (p, did, n) => send("scan-progress", { p, did, n })),
+  cancelScan: () => diag.cancelScan(),
+  mode06: () => diag.mode06(),
+  mode09: () => diag.mode09(),
+  sniff: (ms) => diag.sniff(ms),
+  saveText: ({ text, name, ext }) => {
+    const target = dialog.showSaveDialogSync(win, { defaultPath: path.join(app.getPath("documents"), name), filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
+    if (!target) return null;
+    fs.writeFileSync(target, (ext === "csv" ? "\ufeff" : "") + text, "utf8");
+    return target;
+  },
+  // sauvegarde automatique avant toute écriture dans un calculateur
+  backup: (entry) => {
+    const dir = path.join(app.getPath("documents"), "G&L Diag", "Sauvegardes");
+    fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")} ${entry.vin || ""} ${entry.module} ${entry.did}.json`.replace(/[\\/:*?"<>|]/g, "_"));
+    fs.writeFileSync(f, JSON.stringify(entry, null, 1));
+    return f;
+  },
+  labels: () => { try { return JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "noms.json"), "utf8")); } catch { return {}; } },
+  saveLabels: (l) => { fs.writeFileSync(path.join(app.getPath("userData"), "noms.json"), JSON.stringify(l, null, 1)); return true; },
   history: () => readHist(),
   saveHistory: (entry) => {
     const h = readHist().filter((x) => x.id !== entry.id);

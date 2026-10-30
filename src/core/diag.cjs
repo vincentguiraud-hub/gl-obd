@@ -8,6 +8,7 @@ const { TcpTransport, SerialTransport, BridgeTransport } = require("./transports
 const { SimTransport } = require("./sim.cjs");
 const { SimTruckTransport } = require("./simtruck.cjs");
 const { Hd, TRUCK_MODULES } = require("./hd.cjs");
+const { Uds } = require("./uds.cjs");
 
 class Diag extends EventEmitter {
   constructor() {
@@ -49,6 +50,7 @@ class Diag extends EventEmitter {
       this.obd = new Obd(elm);
       this.vag = new Vag(elm);
       this.hd = new Hd(elm);
+      this.uds = new Uds(elm, (m, quick) => (this.mode === "truck" ? this.hd.open(m.sa, quick) : this.vag.open(m, quick)));
       this.mode = truck ? "truck" : "car";
       const r = truck ? await this.hd.init() : await elm.init();
       this.elm = elm;
@@ -136,6 +138,36 @@ class Diag extends EventEmitter {
       this.need(); this.inVag = true;
       if (this.truck) return this.hd.discover(onProgress);
       return this.vag.discover(onProgress);
+    });
+  }
+
+  // Atelier calculateur : toutes les opérations UDS avancées
+  atelier(op, m, ...args) {
+    const ops = ["identification", "dtcDetails", "allDtcs", "readCoding", "session", "login", "writeDid", "scanDids", "readMany", "routine", "reset", "raw", "did"];
+    if (!ops.includes(op)) throw new Error("Opération inconnue");
+    return this.run(async () => {
+      this.need(); this.inVag = true;
+      if (op === "did") { const b = await this.uds.did(m, args[0]); return b ? require("./uds.cjs").interpret(b) : null; }
+      if (op === "readCoding") return this.uds.readCoding(m);
+      return this.uds[op](m, ...args);
+    });
+  }
+  cancelScan() { this.scanCancelled = true; }
+  scanDids(m, from, to, onProgress) {
+    this.scanCancelled = false;
+    return this.run(async () => { this.need(); this.inVag = true; return this.uds.scanDids(m, from, to, onProgress, () => this.scanCancelled); });
+  }
+
+  mode06() { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.mode06(); }); }
+  mode09() { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.mode09(); }); }
+
+  // Espion du bus CAN : écoute pendant « ms »
+  sniff(ms = 1000) {
+    return this.run(async () => {
+      this.need();
+      if (this.inVag && !this.truck) { await this.vag.done(); this.inVag = false; }
+      if (this.truck) { await this.hd.j1939(); try { await this.elm.at("ATCRA"); } catch {} }
+      return this.elm.sniff(ms);
     });
   }
 

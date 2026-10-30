@@ -215,10 +215,67 @@ class Elm {
     this.state = {};
   }
 
+  // Envoi d'un message de plus de 7 octets (ISO-TP multi-trames, fait à la main :
+  // les ELM327 ne savent pas envoyer de première trame + trames consécutives seuls)
+  async requestLong(hex, timeoutMs = 8000) {
+    const p = hex.match(/../g).map((x) => parseInt(x, 16));
+    if (p.length <= 7) return this.request(hex, timeoutMs);
+    const H = (a) => a.map((b) => b.toString(16).toUpperCase().padStart(2, "0")).join("");
+    const pad = (a) => { while (a.length < 8) a.push(0x55); return a; };
+    await this.at("ATCAF0");
+    try {
+      const fc = this.parseRaw(await this.send(H(pad([0x10 | (p.length >> 8), p.length & 0xff, ...p.slice(0, 6)])), 3000));
+      const f = fc.find((m) => (m.data[0] >> 4) === 3);
+      if (!f) throw new ElmError("Le calculateur n'a pas accepté le message long (pas de contrôle de flux).");
+      if ((f.data[0] & 0x0f) === 2) throw new ElmError("Le calculateur a refusé le message long (dépassement).");
+      const stMin = f.data[2] <= 0x7f ? f.data[2] : 1;
+      const frames = [];
+      for (let i = 6, sn = 1; i < p.length; i += 7, sn = (sn + 1) & 15) frames.push(pad([0x20 | sn, ...p.slice(i, i + 7)]));
+      await this.at("ATR0");
+      for (let i = 0; i < frames.length - 1; i++) {
+        await this.send(H(frames[i]), 1500);
+        if (stMin) await new Promise((r) => setTimeout(r, stMin));
+      }
+      await this.at("ATR1");
+      // (ATST élevé : l'adaptateur attend aussi la réponse finale après un « 7F xx 78 »)
+      return this.parse(await this.send(H(frames[frames.length - 1]), timeoutMs));
+    } finally {
+      try { await this.at("ATR1"); } catch {}
+      try { await this.at("ATCAF1"); } catch {}
+    }
+  }
+
+  // Trames brutes (sans réassemblage)
+  parseRaw(raw) {
+    const save = this.protocol;
+    this.protocol = this.is29 ? "A" : "6";
+    const isJ = this.isJ1939;
+    try {
+      if (!isJ && !this.is29) {
+        return raw.split(/[\r\n]+/).map((l) => l.trim().toUpperCase()).filter((l) => /^[0-9A-F]{3}( [0-9A-F]{2})+$/.test(l))
+          .map((l) => { const t = l.split(" "); return { id: t[0], data: t.slice(1).map((h) => parseInt(h, 16)) }; });
+      }
+      return this.parse(raw);
+    } finally { this.protocol = save; }
+  }
+
+  // Espion du bus : trames brutes reçues pendant « ms » millisecondes (erreurs tolérées)
+  async sniff(ms) {
+    const raw = await this.send("ATMA", 3000, ms);
+    const out = [];
+    for (const l of raw.split(/[\r\n]+/)) {
+      const t = l.trim().toUpperCase().split(/\s+/);
+      if (t.length < 2 || !t.every((x) => /^[0-9A-F]+$/.test(x))) continue;
+      if (t[0].length === 3) out.push({ id: t[0], data: t.slice(1).map((h) => parseInt(h, 16)) });
+      else if (t.length >= 5 && t.slice(0, 4).every((x) => x.length === 2)) out.push({ id: t.slice(0, 4).join(""), data: t.slice(4).map((h) => parseInt(h, 16)) });
+    }
+    return out;
+  }
+
   // Requête UDS : renvoie le message positif (octets) ou lève une erreur NRC.
   async uds(hex, timeoutMs = 6000) {
     for (let attempt = 0; attempt < 6; attempt++) {
-      const msgs = await this.request(hex, timeoutMs);
+      const msgs = hex.length > 14 ? await this.requestLong(hex, timeoutMs) : await this.request(hex, timeoutMs);
       const sid = parseInt(hex.slice(0, 2), 16);
       const real = msgs.filter((m) => !(m.data[0] === 0x7f && m.data[2] === 0x78));
       if (real.length) {

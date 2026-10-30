@@ -185,7 +185,7 @@ diag.on("status", (s) => {
   $("#connectBtn").classList.toggle("hidden", S.connected);
   $("#disconnectBtn").classList.toggle("hidden", !S.connected);
   if (s.state === "connected" && s.info) onConnected(s.info);
-  if (s.state === "disconnected" && was) { stopLive(); toast(s.text || "Déconnecté"); $("#voltBox").textContent = ""; }
+  if (s.state === "disconnected" && was) { stopLive(); try { stopMeas(); stopSniff(); } catch {} toast(s.text || "Déconnecté"); $("#voltBox").textContent = ""; }
   logLine("info", `— ${s.text}`);
 });
 
@@ -204,6 +204,7 @@ function onConnected(info) {
   $("#page-defauts h1").textContent = info.truck ? "Défauts poids lourd (J1939 – tous calculateurs)" : "Défauts moteur / antipollution (OBD)";
   $("#navDtc").textContent = info.truck ? "Défauts (J1939)" : "Défauts moteur (OBD)";
   $("#dtcNote").textContent = info.truck ? "Défauts envoyés par tous les calculateurs du camion (norme J1939 : SPN = élément concerné, FMI = type de panne). Le détail par calculateur est dans « Calculateurs camion »." : "Codes génériques lus sur toutes les marques (norme OBD-II). Pour les autres calculateurs (ABS, airbag, tableau de bord…), va dans « Calculateurs ».";
+  if (typeof A !== "undefined") A.mod = null;
   initModules();
   const title = [info.brand || "Véhicule", info.year].filter(Boolean).join(" ");
   $("#vehSummary").innerHTML = `${esc(title)}<small>${esc(info.vin || "VIN non communiqué")}${info.demo ? " · DÉMO" : ""}</small>`;
@@ -239,6 +240,8 @@ $("#fullScanBtn").onclick = () => busy($("#fullScanBtn"), async () => {
     step(0.03, "Défauts moteur (OBD)…");
     S.obd = await diag.readDtcs(); renderDtcs();
     if (!S.info.truck) {
+      step(0.08, "Résultats des autotests…");
+      try { S.mode06 = await diag.mode06(); } catch {}
       step(0.12, "Tests antipollution…");
       try { S.readiness = await diag.readiness(); renderCt(); } catch {}
       step(0.18, "Arrêt sur image…");
@@ -338,12 +341,13 @@ function renderModule() {
   if (!r || r.scanning) { box.innerHTML = `<h2>${esc(m.addr)} – ${esc(m.name)}</h2><p class="muted">${S.connected ? "Lecture en cours…" : "Connecte-toi pour lire ce calculateur."}</p>`; return; }
   if (!r.reachable) { box.innerHTML = `<h2>${esc(m.addr)} – ${esc(m.name)}</h2><p class="muted">Ce calculateur ne répond pas : il n'existe pas sur ce véhicule, ou il n'est pas accessible avec un adaptateur ELM327.</p><button class="btn ghost" id="modRescan">Réessayer</button>`; $("#modRescan").onclick = () => busy($("#modRescan"), () => scanModule(m)); return; }
   const kv = [["Système", r.systemName], ["Référence pièce", r.partNumber], ["Version logicielle", r.software], ["Référence matériel", r.hardware], ["Version matériel", r.hwVersion], ["Adresse CAN", `${r.reqHex} → ${r.respHex}`]].filter(([, v]) => v);
-  box.innerHTML = `<div class="row between"><h2>${esc(m.addr)} – ${esc(m.name)}</h2><div class="row"><button class="btn ghost" id="modRescan">Relire</button><button class="btn danger" id="modClear">Effacer les défauts</button></div></div>
+  box.innerHTML = `<div class="row between"><h2>${esc(m.addr)} – ${esc(m.name)}</h2><div class="row"><button class="btn ghost" id="modRescan">Relire</button><button class="btn danger" id="modClear">Effacer les défauts</button><button class="btn primary" id="modAtelier">Atelier ›</button></div></div>
     <div class="kv">${kv.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}</div>
     ${r.error ? `<p class="err">${esc(r.error)}</p>` : ""}
     <div class="group"><h2>Défauts <span class="badge ${r.dtcs.length ? "bad" : "ok"}">${r.dtcs.length}</span></h2>
     ${r.dtcs.length ? r.dtcs.map((d) => `<div class="dtc ${d.status.active ? "" : "warn"}"><div class="code">${esc(d.code)}</div><div class="desc"><b>${esc(d.description || d.category)}${d.ftbText ? " – " + esc(d.ftbText) : ""}</b><small>${esc(d.status.label)}${d.status.warning ? " · voyant allumé" : ""}${d.description ? "" : " · code constructeur, voir la recherche internet"}</small></div><button class="btn link" data-url="${esc(searchUrl(d.spn !== undefined ? `SPN ${d.spn} FMI ${d.fmi}` : d.base, d.description))}">Rechercher ↗</button></div>`).join("") : `<p class="muted">Aucun défaut dans ce calculateur.</p>`}</div>`;
   $("#modRescan").onclick = () => busy($("#modRescan"), () => scanModule(m)).catch(() => {});
+  $("#modAtelier").onclick = () => window.openAtelier(m.addr);
   $("#modClear").onclick = async () => {
     if (!await confirmBox(`Effacer les défauts du calculateur ${m.addr} ?`, `<p>${esc(m.name)}</p><p>Contact mis, moteur arrêté. Les défauts présents (actifs) reviendront tout de suite si la panne est toujours là.</p>`, "Effacer")) return;
     busy($("#modClear"), async () => { await diag.vagClear(m); toast("Défauts effacés"); await scanModule(m); saveHistory(); }).catch(() => {});
@@ -492,7 +496,7 @@ function currentEntry() {
     id: S.session?.id || Date.now().toString(36), date: S.session?.date || new Date().toISOString(),
     vin: i.vin, brand: i.brand, truck: !!i.truck, year: i.year, voltage: i.voltage, protocol: i.protocolName, demo: i.demo,
     client: $("#repClient").value.trim(), km: $("#repKm").value.trim(), notes: $("#repNotes").value.trim(),
-    obd: S.obd, readiness: S.readiness, freeze: S.freeze,
+    obd: S.obd, readiness: S.readiness, freeze: S.freeze, mode06: S.mode06 || null,
     modules: Object.values(S.vag).filter((m) => m && m.reachable).sort((a, b) => String(a.addr).localeCompare(String(b.addr))).map((m) => ({ addr: m.addr, name: m.name, systemName: m.systemName, partNumber: m.partNumber, software: m.software, dtcs: m.dtcs, error: m.error })),
   };
 }

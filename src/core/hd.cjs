@@ -248,6 +248,7 @@ class Hd {
         d = { code: `${code} ${h2(c)}`, base: code, ftbText: ftbText(c), ...describeDtc(code) };
       }
       d.base = d.base || `SPN ${d.spn} FMI ${d.fmi}`;
+      d.raw3 = [a, b, c];
       d.status = { raw: s, active: !!(s & 1), warning: !!(s & 0x80), label: s & 1 ? "Présent (actif)" : s & 8 ? "Intermittent / mémorisé" : "En attente (sporadique)" };
       out.push(d);
     }

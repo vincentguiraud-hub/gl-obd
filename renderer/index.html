@@ -16,9 +16,12 @@
     <a data-page="connexion" class="active"><i>⚡</i>Connexion</a>
     <a data-page="defauts"><i>⚠</i><span id="navDtc">Défauts moteur (OBD)</span></a>
     <a data-page="vag"><i>▦</i><span id="navVag">Calculateurs</span></a>
+    <a data-page="atelier"><i>⚙</i>Atelier calculateur</a>
     <a data-page="live"><i>◔</i>Données en direct</a>
     <a data-page="ct" class="carOnly"><i>✓</i>Préparation CT</a>
     <a data-page="freeze" class="carOnly"><i>❄</i>Arrêt sur image</a>
+    <a data-page="obdplus" class="carOnly"><i>≡</i>Tests antipollution détaillés</a>
+    <a data-page="sniff"><i>≈</i>Espion bus CAN</a>
     <a data-page="rapports"><i>▤</i>Rapports &amp; historique</a>
     <a data-page="terminal"><i>›_</i>Terminal ELM327</a>
   </nav>
@@ -120,6 +123,84 @@
     </div>
   </section>
 
+  <!-- ATELIER -->
+  <section class="page hidden" id="page-atelier">
+    <div class="row between">
+      <h1>Atelier calculateur</h1>
+      <div class="row"><select id="atMod" style="min-width:340px"></select><button class="btn ghost" id="atRefresh">↻</button></div>
+    </div>
+    <div class="tabs" id="atTabs">
+      <a data-tab="infos" class="active">Identification</a><a data-tab="dtc">Défauts détaillés</a><a data-tab="coding">Codage</a>
+      <a data-tab="dids">Toutes les valeurs</a><a data-tab="meas">Mesures en direct</a><a data-tab="cmd">Commandes avancées</a>
+    </div>
+    <div class="tab" id="tab-infos"></div>
+    <div class="tab hidden" id="tab-dtc"><div class="split"><div id="atDtcList"></div><div class="card" id="atDtcDet" style="margin-top:0"><div class="empty">Clique sur un défaut pour voir ses détails.</div></div></div></div>
+    <div class="tab hidden" id="tab-coding"></div>
+    <div class="tab hidden" id="tab-dids">
+      <div class="card">
+        <div class="row wrap">
+          <label class="grow">Plage à explorer
+            <select id="didRange">
+              <option value="F100-F1FF">Identification (F100 – F1FF) · ~10 s</option>
+              <option value="0100-0FFF">Valeurs de base (0100 – 0FFF) · 2 à 4 min</option>
+              <option value="1000-1FFF">Valeurs de mesure (1000 – 1FFF) · 2 à 4 min</option>
+              <option value="2000-2FFF">Valeurs de mesure (2000 – 2FFF) · 2 à 4 min</option>
+              <option value="0000-2FFF">Tout le principal (0000 – 2FFF) · 8 à 12 min</option>
+              <option value="custom">Plage personnalisée…</option>
+            </select>
+          </label>
+          <label id="didCustom" class="hidden">De <input id="didFrom" value="0400" size="6" class="mono"></label>
+          <label id="didCustom2" class="hidden">à <input id="didTo" value="04FF" size="6" class="mono"></label>
+          <button class="btn primary" id="didScan" style="margin-top:22px">Explorer</button>
+          <button class="btn ghost hidden" id="didStop" style="margin-top:22px">Arrêter</button>
+        </div>
+        <div class="progress hidden" id="didProg"><div></div><span></span></div>
+        <div class="row mt"><input id="didFilter" class="grow" placeholder="Filtrer (numéro, nom, valeur…)"><label class="row" style="margin:0"><input type="checkbox" id="didChangedOnly" style="width:auto"> seulement les valeurs qui bougent</label><button class="btn ghost" id="didRefresh">Relire tout</button><button class="btn ghost" id="didCsv">Exporter</button></div>
+      </div>
+      <div class="card flush"><table class="tbl dids" id="didTable"><thead><tr><th></th><th>N°</th><th>Nom (modifiable)</th><th>Brut (hex)</th><th>Texte</th><th>Nombre</th><th></th></tr></thead><tbody><tr><td colspan="7" class="muted" style="padding:20px">Lance une exploration : le logiciel interroge chaque numéro et affiche toutes les valeurs que le calculateur donne.</td></tr></tbody></table></div>
+    </div>
+    <div class="tab hidden" id="tab-meas">
+      <div class="row between mt"><p class="muted" style="margin:0">Coche des valeurs dans « Toutes les valeurs » (☐) pour les suivre ici en direct, avec leur échelle.</p><div class="row"><span class="muted" id="measRate"></span><button class="btn ghost" id="measCsv">Exporter en CSV</button><button class="btn primary" id="measStart">▶ Démarrer</button></div></div>
+      <div id="measTiles" class="tiles"></div>
+    </div>
+    <div class="tab hidden" id="tab-cmd">
+      <div class="grid2">
+        <div class="card"><h2>Session de diagnostic</h2><p class="muted">Certaines fonctions (réglages, codage) demandent la session étendue.</p>
+          <div class="row wrap"><button class="btn ghost" data-sess="1">Normale</button><button class="btn ghost" data-sess="3">Étendue</button><button class="btn ghost" data-sess="64">Fin de ligne (VW)</button></div>
+          <h2 class="mt">Accès sécurisé (code de connexion)</h2>
+          <div class="row"><input id="loginCode" class="mono" placeholder="Code (ex. 5 chiffres)" style="width:180px"><select id="loginLevel" style="width:auto"><option value="3">Niveau 03</option><option value="1">Niveau 01</option><option value="17">Niveau 11</option></select><button class="btn primary" id="loginBtn">Se connecter</button></div>
+          <p class="muted small">Méthode classique « graine + code ». Après 3 essais faux, le calculateur bloque l'accès quelques minutes.</p>
+          <h2 class="mt">Redémarrer le calculateur</h2>
+          <div class="row"><button class="btn danger" id="resetBtn">Redémarrage logiciel</button></div>
+        </div>
+        <div class="card"><h2>Routines (réglages de base, tests d'actionneurs)</h2>
+          <p class="muted">Lance une routine du calculateur par son numéro (fourni par la documentation technique du constructeur).</p>
+          <div class="row wrap"><label>N° routine <input id="rtId" class="mono" placeholder="ex. 0183" size="8"></label><label>Paramètres (hex) <input id="rtData" class="mono" placeholder="facultatif" size="14"></label></div>
+          <div class="row mt"><button class="btn primary" data-rt="1">Démarrer</button><button class="btn ghost" data-rt="2">Arrêter</button><button class="btn ghost" data-rt="3">Résultat</button></div>
+          <pre class="out" id="rtOut"></pre>
+          <h2 class="mt">Requête libre (UDS)</h2>
+          <div class="row"><input id="udsRaw" class="mono grow" placeholder="ex. 22F190"><button class="btn primary" id="udsSend">Envoyer</button></div>
+          <pre class="out" id="udsOut"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OBD+ -->
+  <section class="page hidden" id="page-obdplus">
+    <div class="row between"><h1>Tests antipollution détaillés</h1><button class="btn primary" id="obdPlusBtn">Lire</button></div>
+    <p class="muted">Résultats chiffrés des autotests du calculateur moteur (catalyseur, sondes lambda, EGR, FAP, ratés…) avec leurs limites, et fréquence de réalisation des tests (IUPR). Un test « hors limites » annonce souvent une panne avant que le voyant ne s'allume.</p>
+    <div id="obdPlusOut"><div class="empty">Clique sur « Lire ».</div></div>
+  </section>
+
+  <!-- SNIFF -->
+  <section class="page hidden" id="page-sniff">
+    <div class="row between"><h1>Espion du bus CAN</h1><div class="row"><span class="muted" id="sniffRate"></span><button class="btn ghost" id="sniffCsv">Exporter le journal</button><button class="btn primary" id="sniffBtn">▶ Écouter</button></div></div>
+    <p class="muted">Affiche toutes les trames qui circulent sur la prise diagnostic, en direct. Les octets qui changent sont surlignés. Sur les VW récents la passerelle filtre beaucoup de trafic sur la prise OBD : c'est normal si peu de trames apparaissent ; sur camion (J1939) tout le trafic est visible.</p>
+    <div class="row"><input id="sniffFilter" class="grow" placeholder="Filtrer par identifiant (ex. 280, 0CF004)"></div>
+    <div class="card flush"><table class="tbl" id="sniffTable"><thead><tr><th>Identifiant</th><th>Trames</th><th>Fréquence</th><th>Données</th><th>Texte</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
   <!-- LIVE -->
   <section class="page hidden" id="page-live">
     <div class="row between">
@@ -161,7 +242,7 @@
 
   <!-- RAPPORTS -->
   <section class="page hidden" id="page-rapports">
-    <div class="row between"><h1>Rapports &amp; historique</h1><button class="btn primary" id="pdfBtn">Créer le rapport PDF du diagnostic en cours</button></div>
+    <div class="row between"><h1>Rapports &amp; historique</h1><div class="row"><button class="btn ghost" id="txtBtn">Exporter l'autoscan (texte)</button><button class="btn primary" id="pdfBtn">Créer le rapport PDF du diagnostic en cours</button></div></div>
     <div class="card">
       <h2>Informations pour le rapport</h2>
       <div class="row wrap">
@@ -187,5 +268,6 @@
 <div class="toast hidden" id="toast"></div>
 <script src="report.js"></script>
 <script src="app.js"></script>
+<script src="atelier.js"></script>
 </body>
 </html>

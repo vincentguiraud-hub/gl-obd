@@ -1,6 +1,7 @@
 // Simulateur ELM327 branché sur un camion MAN TGX 2019 (J1939 250 kbit/s + UDS 29 bits).
 "use strict";
 const { EventEmitter } = require("events");
+const { FakeEcu, IsoTpRx } = require("./fakeecu.cjs");
 const h2 = (n) => n.toString(16).toUpperCase().padStart(2, "0");
 const dtc = (spn, fmi, oc) => [spn & 0xff, (spn >> 8) & 0xff, (((spn >> 16) & 7) << 5) | fmi, oc];
 
@@ -10,16 +11,21 @@ class SimTruckTransport extends EventEmitter {
     this.t0 = Date.now();
     this.dm1 = { 0x00: [dtc(3251, 0, 3), dtc(1761, 18, 1)], 0x3d: [dtc(4364, 18, 2)] };
     this.dm2 = { 0x00: [dtc(100, 1, 2)] };
+    const E = (o) => new FakeEcu(o);
     this.uds = {
-      0x00: { F197: "EDC17CV52", F187: "51.25803-7650", F195: "P1236 V2.4", F193: "0281020123", dtcs: [[0xb3, 0x0c, 0x00, 0x09], [0xe1, 0x06, 0x12, 0x08]] },
-      0x0b: { F197: "EBS3 Motorwagen", F187: "81.25808-7012", F195: "S12", dtcs: [[0x89, 0x03, 0x05, 0x08]] },
-      0x17: { F197: "Kombiinstrument", F187: "81.27205-6420", F195: "V07", dtcs: [] },
-      0x3d: { F197: "ACM 2.1", F187: "51.25450-7005", F195: "A21", dtcs: [[0x0c, 0x11, 0x12, 0x09]] },
-      0x21: { F197: "ZBR2", F187: "81.25806-7140", F195: "Z42", dtcs: [] },
+      0x00: E({ ids: { F197: "EDC17CV52", F187: "51.25803-7650", F195: "P1236 V2.4", F193: "0281020123", F190: "WMA06XZZ9KP012345", F18C: "BOS12345678" },
+        coding: [0x12, 0x00, 0x34, 0x01, 0x80, 0x00, 0x00, 0x05], dids: { "0100": [0x48, 0x00], "0101": [0x01, 0x90], "0102": [0x00, 0x2a] },
+        dtcs: [[0xb3, 0x0c, 0x00, 0x09], [0xe1, 0x06, 0x12, 0x08]], routines: { "0201": { 1: [0x00], 3: [0x01] } } }),
+      0x0b: E({ ids: { F197: "EBS3 Motorwagen", F187: "81.25808-7012", F195: "S12" }, dtcs: [[0x89, 0x03, 0x05, 0x08]] }),
+      0x17: E({ ids: { F197: "Kombiinstrument", F187: "81.27205-6420", F195: "V07" }, dtcs: [] }),
+      0x3d: E({ ids: { F197: "ACM 2.1", F187: "51.25450-7005", F195: "A21" }, dtcs: [[0x0c, 0x11, 0x12, 0x09]] }),
+      0x21: E({ ids: { F197: "ZBR2", F187: "81.25806-7140", F195: "Z42" }, dtcs: [] }),
     };
+    for (const e of Object.values(this.uds)) { const h = e.handle.bind(e); e.handle = (b) => (b[0] === 0x19 && b[1] === 0x01 ? [[0x59, 0x01, 0xff, 0x02, 0x00, e.dtcs.length]] : h(b)); }
+    this.rx = new IsoTpRx();
     this.reset();
   }
-  reset() { this.s = { echo: true, h: false, proto: "0", cp: 0x18, sh: 0xeafff9, cra: null }; this.stopMon(); }
+  reset() { this.s = { echo: true, h: false, proto: "0", cp: 0x18, sh: 0xeafff9, cra: null, caf: true, r: true }; this.stopMon(); }
   async open() {}
   close() { this.stopMon(); this.emit("close"); }
   out(s) { setTimeout(() => this.emit("data", Buffer.from(s, "latin1")), 6); }
@@ -108,11 +114,13 @@ class SimTruckTransport extends EventEmitter {
       if (a.startsWith("CP")) { s.cp = parseInt(a.slice(2), 16); return "OK"; }
       if (a.startsWith("SH")) { s.sh = parseInt(a.slice(2), 16); return "OK"; }
       if (a.startsWith("CRA")) { s.cra = a.length > 3 ? parseInt(a.slice(3), 16) : null; return "OK"; }
+      if (/^CAF[01]$/.test(a)) { s.caf = a[3] === "1"; return "OK"; }
+      if (/^R[01]$/.test(a)) { s.r = a[1] === "1"; return "OK"; }
       return "OK";
     }
     if (!/^[0-9A-F]+$/.test(c) || c.length % 2) return "?";
     if (!this.busUp()) return "CAN ERROR";
-    const b = c.match(/../g).map((x) => parseInt(x, 16));
+    let b = c.match(/../g).map((x) => parseInt(x, 16));
     if (s.proto === "A") {
       const pgn = b[0] | (b[1] << 8) | (b[2] << 16);
       if (pgn === 0xfecb) return this.dmMsg(0xfecb, this.dm2).join("\r") || "NO DATA";
@@ -127,20 +135,17 @@ class SimTruckTransport extends EventEmitter {
     const target = (s.sh >> 8) & 0xff;
     const m = this.uds[target];
     const resp = 0x18daf100 | target;
-    if (!m || (s.cra !== null && s.cra !== resp)) return "NO DATA";
-    const p = this.udsResp(m, b);
-    return this.isotp(resp, p).join("\r");
+    if (!m || (s.cra !== null && s.cra !== resp)) return s.r ? "NO DATA" : "";
+    if (!s.caf) {
+      const r = this.rx.push(b);
+      if (r.fc) return s.r ? this.fr(resp, [0x30, 0, 0]) : "";
+      if (!r.done) return s.r ? "NO DATA" : "";
+      b = r.done;
+    }
+    const lines = m.handle(b).flatMap((p) => this.isotp(resp, p));
+    return s.r ? lines.join("\r") : "";
   }
 
-  udsResp(m, b) {
-    if (b[0] === 0x22) { const v = m[h2(b[1]) + h2(b[2])]; return v === undefined ? [0x7f, 0x22, 0x31] : [0x62, b[1], b[2], ...Buffer.from(v, "latin1")]; }
-    if (b[0] === 0x3e) return [0x7e, 0];
-    if (b[0] === 0x10) return [0x50, b[1], 0, 0x32, 1, 0xf4];
-    if (b[0] === 0x19 && b[1] === 0x01) return [0x59, 0x01, 0xff, 0x02, 0x00, m.dtcs.length];
-    if (b[0] === 0x19) return [0x59, 0x02, 0xff, ...m.dtcs.flat()];
-    if (b[0] === 0x14) { m.dtcs = []; return [0x54]; }
-    return [0x7f, b[0], 0x11];
-  }
   isotp(id, p) {
     if (p.length <= 7) return [this.fr(id, [p.length, ...p])];
     const out = [this.fr(id, [0x10 | (p.length >> 8), p.length & 0xff, ...p.slice(0, 6)])];

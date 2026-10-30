@@ -6,18 +6,39 @@ const { EventEmitter } = require("events");
 const h2 = (n) => n.toString(16).toUpperCase().padStart(2, "0");
 const VIN = "WV1ZZZSYZK9012345";
 
-const MODULES = {
-  0x7e0: { resp: 0x7e8, ids: { F197: "R4 2.0l TDI", F187: "04L907309R", F189: "0003", F191: "04L907309R", F1A3: "H17" },
-    dtcs: [[0x02, 0x99, 0x00, 0x09], [0x24, 0x63, 0x00, 0x08], [0x20, 0xee, 0x00, 0x04]], pending78: true },
-  0x713: { resp: 0x77d, ids: { F197: "ESC", F187: "2N0907379H", F189: "0280", F191: "2N0614517A", F1A3: "H09" }, dtcs: [[0x40, 0x35, 0x1c, 0x2c]] },
-  0x715: { resp: 0x77f, ids: { F197: "Airbag VW8R", F187: "2N0959655B", F189: "0812", F1A3: "H05" }, dtcs: [] },
-  0x714: { resp: 0x77e, ids: { F197: "KOMBI", F187: "7C0920740B", F189: "0211", F1A3: "H12" }, dtcs: [[0xc1, 0x21, 0x00, 0x09]] },
-  0x710: { resp: 0x77a, ids: { F197: "Gateway MQB-B", F187: "2Q0907530AA", F189: "2228", F1A3: "H14" }, dtcs: [] },
-  0x70e: { resp: 0x778, ids: { F197: "BCM MQB-B High", F187: "7C0937084", F189: "0105", F1A3: "H22" }, dtcs: [[0x90, 0x52, 0x13, 0x08]], needsExtended: true },
-  0x712: { resp: 0x77c, ids: { F197: "EPS_ZFLS Kl.11", F187: "7C1909144A", F189: "2701", F1A3: "H04" }, dtcs: [] },
-  0x746: { resp: 0x7b0, ids: { F197: "Climatronic", F187: "7C0907044", F189: "0302", F1A3: "H03" }, dtcs: [] },
-  0x74f: { resp: 0x7b9, ids: { F197: "Frontkamera", F187: "3QD980654", F189: "0410", F1A3: "H06" }, dtcs: [] },
-};
+const { FakeEcu, IsoTpRx } = require("./fakeecu.cjs");
+const rnd = (a, b) => Math.round(a + Math.random() * (b - a));
+
+function makeModules(sim) {
+  const live = () => sim.live();
+  const u16 = (v) => [(v >> 8) & 0xff, v & 0xff];
+  return {
+    0x7e0: { resp: 0x7e8, ecu: new FakeEcu({
+      ids: { F197: "R4 2.0l TDI", F187: "04L907309R", F189: "0003", F191: "04L907309R", F1A3: "H17", F18C: "VWZ6Z0K0123456", F19E: "EV_ECM20TDI01104L907309R", F1A2: "001003", F17C: "FAZ-00123", F190: VIN, F18B: "190417" },
+      coding: [0x01, 0x1a, 0x00, 0x10, 0x00, 0x00, 0x00, 0x24, 0x00],
+      dids: {
+        "1001": () => u16(Math.round(live().rpm)), "1002": () => [Math.round(live().cool + 40)], "1003": () => u16(Math.round((1000 + live().speed * 12))),
+        "1004": () => u16(Math.round(300 + live().rpm * 0.4)), "1005": () => [62], "1006": () => u16(rnd(1180, 1220)), "1007": () => u16(14842),
+        "100C": [0x00, 0x2a, 0x13, 0x88], "2032": [0x00, 0x00, 0x4b], "295A": [0x01, 0x6a, 0x5e, 0x40], "02BD": [0x05],
+      },
+      writable: ["1005"],
+      routines: { "0183": { 1: [0x00], 3: [0x02, 0x41] } },
+      dtcs: [[0x02, 0x99, 0x00, 0x09], [0x24, 0x63, 0x00, 0x08], [0x20, 0xee, 0x00, 0x04]], pending78: true,
+      snap: {
+        "2,153,0": { snapshot: [0x01, 0x02, 0x10, 0x01, 0x07, 0xd8, 0x10, 0x03, 0x04, 0xb0], extended: [0x01, 0x03, 0x02, 0x00, 0x2a, 0x13, 0x88] },
+        "36,99,0": { snapshot: [0x01, 0x01, 0x10, 0x02, 0x5a], extended: [0x01, 0x0b] },
+      },
+    }) },
+    0x713: { resp: 0x77d, ecu: new FakeEcu({ ids: { F197: "ESC", F187: "2N0907379H", F189: "0280", F191: "2N0614517A", F1A3: "H09", F18C: "TRW1234567" }, coding: [0x00, 0x34, 0x12, 0x80, 0x00, 0x11, 0x08], dtcs: [[0x40, 0x35, 0x1c, 0x2c]], snap: { "64,53,28": { snapshot: [0x01, 0x01, 0x10, 0x03, 0x00, 0x00], extended: [0x01, 0x01] } } }) },
+    0x715: { resp: 0x77f, ecu: new FakeEcu({ ids: { F197: "Airbag VW8R", F187: "2N0959655B", F189: "0812", F1A3: "H05" }, coding: [0x00, 0x00, 0x10, 0x24, 0x00, 0x00], dtcs: [] }) },
+    0x714: { resp: 0x77e, ecu: new FakeEcu({ ids: { F197: "KOMBI", F187: "7C0920740B", F189: "0211", F1A3: "H12" }, coding: [0x22, 0x0b, 0x00, 0x80, 0x00, 0x02], dids: { "2203": [0x02, 0x43, 0xb6, 0xd2] }, dtcs: [[0xc1, 0x21, 0x00, 0x09]] }) },
+    0x710: { resp: 0x77a, ecu: new FakeEcu({ ids: { F197: "Gateway MQB-B", F187: "2Q0907530AA", F189: "2228", F1A3: "H14" }, coding: [0x01, 0x00, 0x7f, 0xff, 0xa3, 0x00, 0x10, 0x00], dtcs: [] }) },
+    0x70e: { resp: 0x778, ecu: new FakeEcu({ ids: { F197: "BCM MQB-B High", F187: "7C0937084", F189: "0105", F1A3: "H22" }, coding: Array.from({ length: 30 }, (_, i) => [0x2d, 0x1a, 0x02, 0x00, 0x80, 0x48][i % 6]), loginCode: 31347, needsExtended: true, dtcs: [[0x90, 0x52, 0x13, 0x08]] }) },
+    0x712: { resp: 0x77c, ecu: new FakeEcu({ ids: { F197: "EPS_ZFLS Kl.11", F187: "7C1909144A", F189: "2701", F1A3: "H04" }, dtcs: [] }) },
+    0x746: { resp: 0x7b0, ecu: new FakeEcu({ ids: { F197: "Climatronic", F187: "7C0907044", F189: "0302", F1A3: "H03" }, dtcs: [] }) },
+    0x74f: { resp: 0x7b9, ecu: new FakeEcu({ ids: { F197: "Frontkamera", F187: "3QD980654", F189: "0410", F1A3: "H06" }, dtcs: [] }) },
+  };
+}
 
 class SimTransport extends EventEmitter {
   constructor() {
@@ -25,12 +46,17 @@ class SimTransport extends EventEmitter {
     this.reset();
     this.t0 = Date.now();
     this.storedCleared = false;
+    this.modules = makeModules(this);
+    this.rx = new IsoTpRx();
   }
-  reset() { this.s = { echo: true, h: false, sp: true, sh: 0x7df, cra: null, proto: "0", ext: false }; }
+  reset() { this.s = { echo: true, h: false, sp: true, sh: 0x7df, cra: null, proto: "0", caf: true, r: true }; this.stopMon(); }
+  stopMon() { if (this.mon) { clearInterval(this.mon); this.mon = null; return true; } return false; }
   async open() {}
   close() { this.emit("close"); }
   write(str) {
+    if (this.stopMon()) { setTimeout(() => this.emit("data", Buffer.from("\r\r>", "latin1")), 5); return; }
     const cmd = str.replace(/\r$/, "").trim();
+    if (/^ATMA$/i.test(cmd)) return this.sniff(cmd);
     const out = this.handle(cmd.toUpperCase().replace(/\s+/g, ""));
     const echo = this.s.echo ? cmd + "\r" : "";
     setTimeout(() => this.emit("data", Buffer.from(echo + out + "\r\r>", "latin1")), 8);
@@ -41,17 +67,24 @@ class SimTransport extends EventEmitter {
     if (c.startsWith("AT")) return this.at(c.slice(2));
     if (!/^[0-9A-F]+$/.test(c) || c.length % 2) return "?";
     if (this.s.proto === "0") this.s.proto = "6";
-    const bytes = c.match(/../g).map((x) => parseInt(x, 16));
+    let bytes = c.match(/../g).map((x) => parseInt(x, 16));
     const lines = [];
-    if (this.s.sh === 0x7df || this.s.sh === 0x7e0 && bytes[0] < 0x10) {
+    const m = this.modules[this.s.sh];
+    if (!this.s.caf) {
+      // trame brute avec octet PCI (envoi multi-trames manuel)
+      if (!m) return this.s.r ? "NO DATA" : "";
+      const r = this.rx.push(bytes);
+      if (r.fc) return this.s.r ? this.frames(m.resp, [], [0x30, 0x00, 0x00]).join("\r") : "";
+      if (!r.done) return this.s.r ? "NO DATA" : "";
+      bytes = r.done;
+    }
+    if (this.s.sh === 0x7df || (this.s.sh === 0x7e0 && bytes[0] < 0x10)) {
       const p = this.obd(bytes);
       if (p) lines.push(...this.frames(0x7e8, p));
-    } else {
-      const m = MODULES[this.s.sh];
-      if (m && (this.s.cra === null || this.s.cra === m.resp)) {
-        for (const p of this.uds(m, bytes)) lines.push(...this.frames(m.resp, p));
-      }
+    } else if (m && (this.s.cra === null || this.s.cra === m.resp)) {
+      for (const p of m.ecu.handle(bytes)) lines.push(...this.frames(m.resp, p));
     }
+    if (!this.s.r) return "";
     return lines.length ? lines.join("\r") : "NO DATA";
   }
 
@@ -69,15 +102,18 @@ class SimTransport extends EventEmitter {
     if (a.startsWith("SP")) { s.proto = a.slice(2) === "0" ? "0" : a.slice(2); return "OK"; }
     if (a.startsWith("SH")) { s.sh = parseInt(a.slice(2), 16); return "OK"; }
     if (a.startsWith("CRA")) { s.cra = a.length > 3 ? parseInt(a.slice(3), 16) : null; return "OK"; }
+    if (/^CAF[01]$/.test(a)) { s.caf = a[3] === "1"; return "OK"; }
+    if (/^R[01]$/.test(a)) { s.r = a[1] === "1"; return "OK"; }
     return "OK";
   }
 
-  frames(id, p) {
+  frames(id, p, raw) {
     const idh = id.toString(16).toUpperCase();
     const fmt = (arr) => {
       while (arr.length < 8) arr.push(0xaa);
       return this.s.h ? `${idh} ${arr.map(h2).join(" ")}` : arr.map(h2).join(" ");
     };
+    if (raw) return [fmt(raw)];
     if (p.length <= 7) return [fmt([p.length, ...p])];
     const out = [fmt([0x10 | (p.length >> 8), p.length & 0xff, ...p.slice(0, 6)])];
     let sn = 1;
@@ -150,35 +186,51 @@ class SimTransport extends EventEmitter {
     if (svc === 0x03) return this.storedCleared ? [0x43, 0x00] : [0x43, 0x02, 0x02, 0x99, 0x24, 0x63];
     if (svc === 0x07) return [0x47, 0x01, 0x20, 0xee];
     if (svc === 0x0a) return [0x4a, 0x00];
-    if (svc === 0x04) { this.storedCleared = true; MODULES[0x7e0].dtcs = []; return [0x44]; }
+    if (svc === 0x04) { this.storedCleared = true; this.modules[0x7e0].ecu.dtcs = []; return [0x44]; }
     if (svc === 0x09 && b[1] === 0x02) return [0x49, 0x02, 0x01, ...Buffer.from(VIN, "latin1")];
     if (svc === 0x09 && b[1] === 0x0a) return [0x49, 0x0a, 0x01, ...Buffer.from("ECM-EngineControl\0\0\0", "latin1")];
     if (svc === 0x09 && b[1] === 0x00) return [0x49, 0x00, 0x54, 0x40, 0x00, 0x00];
+    if (svc === 0x09 && b[1] === 0x04) return [0x49, 0x04, 0x01, ...Buffer.from("04L907309R  0003", "latin1")];
+    if (svc === 0x09 && b[1] === 0x06) return [0x49, 0x06, 0x01, 0x8a, 0x3f, 0x11, 0xc2];
+    if (svc === 0x09 && b[1] === 0x0b) { const v = [412, 518, 37, 95, 22, 88, 0, 0, 14, 96, 51, 110, 210, 312, 180, 260]; return [0x49, 0x0b, 0x10, ...v.flatMap((x) => [x >> 8, x & 0xff])]; }
+    if (svc === 0x06) {
+      const mid = b[1];
+      if (mid === 0x00) return [0x46, 0x00, 0x00, 0x00, 0x00, 0x01];
+      if (mid === 0x20) return [0x46, 0x20, 0x00, 0x00, 0x80, 0x01];
+      if (mid === 0x40) return [0x46, 0x40, 0x00, 0x00, 0x00, 0x01];
+      if (mid === 0x60) return [0x46, 0x60, 0x00, 0x00, 0x00, 0x01];
+      if (mid === 0x80) return [0x46, 0x80, 0x0c, 0x00, 0x00, 0x01];
+      if (mid === 0xa0) return [0x46, 0xa0, 0xf0, 0x01, 0x00, 0x01];
+      if (mid === 0xc0) return [0x46, 0xc0, 0x00, 0x00, 0x00, 0x00];
+      const T = {
+        0x31: [[0x01, 0x24, 12, 0, 40], [0x02, 0x24, 3, 0, 10]],
+        0x85: [[0x01, 0x1a, 152, 140, 255]], 0x86: [[0x02, 0x1a, 131, 140, 255]],
+        0xa1: [[0x0b, 0x24, 0, 0, 65535], [0x0c, 0x24, 2, 0, 65535]], 0xa2: [[0x0b, 0x24, 2, 0, 50]],
+        0xa3: [[0x0b, 0x24, 0, 0, 50]], 0xa4: [[0x0b, 0x24, 1, 0, 50]],
+        0xb0: [[0x01, 0x96, 640, 0, 680], [0x02, 0x17, 1850, 0, 2400]],
+      }[mid];
+      if (!T) return null;
+      return [0x46, ...T.flatMap(([tid, u, v, mn, mx]) => [mid, tid, u, v >> 8, v & 0xff, mn >> 8, mn & 0xff, mx >> 8, mx & 0xff])];
+    }
     return null;
   }
 
-  uds(m, b) {
-    const sid = b[0];
-    if (sid === 0x22) {
-      const did = h2(b[1]) + h2(b[2]);
-      const v = m.ids[did];
-      if (v === undefined) return [[0x7f, 0x22, 0x31]];
-      return [[0x62, b[1], b[2], ...Buffer.from(v, "latin1")]];
-    }
-    if (sid === 0x3e) return [[0x7e, 0x00]];
-    if (sid === 0x10) { this.s.ext = b[1] === 0x03; return [[0x50, b[1], 0x00, 0x32, 0x01, 0xf4]]; }
-    if (sid === 0x19) {
-      const out = [0x59, 0x02, 0xff];
-      for (const d of m.dtcs) out.push(...d);
-      return m.pending78 ? [[0x7f, 0x19, 0x78], out] : [out];
-    }
-    if (sid === 0x14) {
-      if (m.needsExtended && !this.s.ext) return [[0x7f, 0x14, 0x22]];
-      m.dtcs = [];
-      return [[0x54]];
-    }
-    return [[0x7f, sid, 0x11]];
+  sniff(cmd) {
+    const echo = this.s.echo ? cmd + "\r" : "";
+    this.emit("data", Buffer.from(echo, "latin1"));
+    let n = 0;
+    this.mon = setInterval(() => {
+      n++;
+      const v = this.live(), L = [];
+      const f = (id, d) => L.push(`${id.toString(16).toUpperCase()} ${d.map(h2).join(" ")}`);
+      f(0x280, [0x00, 0x00, ...[(Math.round(v.rpm * 4) & 0xff), (Math.round(v.rpm * 4) >> 8)], 0x00, 0x00, 0x00, 0x00]);
+      if (n % 2) f(0x1a0, [0x00, 0xa0, Math.round(v.speed * 2) & 0xff, 0x00, 0xfe, 0xfe, 0x00, 0x10]);
+      if (n % 5 === 0) f(0x5c0, [n & 0xff, 0x40, 0x00, 0x00]);
+      if (n % 10 === 0) f(0x3c0, [0x12, (n >> 3) & 0x0f, 0x03, 0x00]);
+      this.emit("data", Buffer.from(L.join("\r") + "\r", "latin1"));
+    }, 20);
   }
+
 }
 
 module.exports = { SimTransport };
