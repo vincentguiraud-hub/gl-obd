@@ -74,13 +74,22 @@ const HELP = {
   demo: `<h2>Mode démo</h2><p>Tu peux tout essayer : lecture et effacement des défauts, calculateurs, données en direct, rapport PDF. Aucune voiture n'est contactée.</p>`,
 };
 const ctype = () => $("input[name=ctype]:checked").value;
+const vtype = () => $("input[name=vtype]:checked").value;
 function showType() {
-  const t = ctype();
+  const t = ctype(), truck = vtype() === "truck";
+  $("#truckWarn").classList.toggle("hidden", !truck);
+  $("#demoText").textContent = truck ? "Simule un camion MAN TGX 2019 (J1939) avec quelques défauts AdBlue / FAP, pour découvrir le logiciel." : "Simule un VW Crafter 2019 2.0 TDI avec quelques défauts, pour découvrir le logiciel.";
+  store.set("vtype", vtype());
   ["serial", "wifi", "ble", "demo"].forEach((k) => $("#opt-" + k).classList.toggle("hidden", k !== t));
-  $("#helpBox").innerHTML = HELP[t] + `<p class="muted mt">Compatible avec les adaptateurs ELM327 v1.4b / v1.5 / v2.x et équivalents (Vgate, Veepeak, OBDLink, Konnwei…). Toutes marques en OBD générique ; diagnostic constructeur pour le groupe VW.</p>`;
+  $("#helpBox").innerHTML = HELP[t] + (truck ? `<h2 class="mt">Poids lourd MAN</h2><ol>
+    <li>La prise diagnostic se trouve dans la cabine (côté passager, près de la boîte à fusibles / ZE).</li>
+    <li>Adaptateur <b>12/24 V</b> et <b>J1939</b> obligatoire.</li>
+    <li>Le logiciel cherche le bus à 250 puis 500 kbit/s : contact mis, attends quelques secondes.</li>
+    <li>Le MAN TGE (utilitaire) se diagnostique en « Voiture / utilitaire », c'est un Crafter.</li></ol>` : "") + `<p class="muted mt">Compatible avec les adaptateurs ELM327 v1.4b / v1.5 / v2.x et équivalents (Vgate, Veepeak, OBDLink, Konnwei…). Toutes marques en OBD générique ; diagnostic constructeur pour le groupe VW.</p>`;
   store.set("ctype", t);
 }
-$$("input[name=ctype]").forEach((r) => (r.onchange = showType));
+$$("input[name=ctype], input[name=vtype]").forEach((r) => (r.onchange = showType));
+const savedV = $(`input[name=vtype][value=${store.get("vtype", "car")}]`); if (savedV) savedV.checked = true;
 const savedType = store.get("ctype", "serial");
 const radio = $(`input[name=ctype][value=${savedType}]`); if (radio) radio.checked = true;
 $("#wifiHost").value = store.get("wifiHost", "192.168.0.10");
@@ -149,7 +158,7 @@ async function connectBle() {
 $("#connectBtn").onclick = () => busy($("#connectBtn"), async () => {
   $("#connErr").classList.add("hidden");
   const t = ctype();
-  const opts = { type: t };
+  const opts = { type: t, vehicle: vtype() };
   if (t === "serial") {
     opts.path = $("#portSel").value; opts.baud = $("#baudSel").value;
     if (!opts.path) throw new Error("Choisis un port COM (appaire d'abord l'adaptateur dans Windows).");
@@ -186,8 +195,16 @@ function newSession() {
 }
 
 function onConnected(info) {
-  if (!S.info || S.info.vin !== info.vin) newSession();
+  if (!S.info || S.info.vin !== info.vin || !!S.info.truck !== !!info.truck) newSession();
   S.info = info;
+  document.body.classList.toggle("truck", !!info.truck);
+  selPids = new Set(store.get(info.truck ? "pidsTruck" : "pids", presets().moteur));
+  $("#navVag").textContent = info.truck ? "Calculateurs camion" : info.vag ? "Calculateurs VW / Audi" : "Calculateurs";
+  $("#vagTitle").textContent = info.truck ? "Calculateurs poids lourd (MAN et autres camions J1939)" : info.vag ? "Calculateurs VW · Audi · Seat · Škoda · Cupra · MAN TGE" : `Calculateurs ${info.brand || ""}`;
+  $("#page-defauts h1").textContent = info.truck ? "Défauts poids lourd (J1939 – tous calculateurs)" : "Défauts moteur / antipollution (OBD)";
+  $("#navDtc").textContent = info.truck ? "Défauts (J1939)" : "Défauts moteur (OBD)";
+  $("#dtcNote").textContent = info.truck ? "Défauts envoyés par tous les calculateurs du camion (norme J1939 : SPN = élément concerné, FMI = type de panne). Le détail par calculateur est dans « Calculateurs camion »." : "Codes génériques lus sur toutes les marques (norme OBD-II). Pour les autres calculateurs (ABS, airbag, tableau de bord…), va dans « Calculateurs ».";
+  initModules();
   const title = [info.brand || "Véhicule", info.year].filter(Boolean).join(" ");
   $("#vehSummary").innerHTML = `${esc(title)}<small>${esc(info.vin || "VIN non communiqué")}${info.demo ? " · DÉMO" : ""}</small>`;
   setVolt(info.voltage);
@@ -195,12 +212,13 @@ function onConnected(info) {
   $("#vehKv").innerHTML = [
     ["Marque", info.brand || "Inconnue"], ["Année modèle", info.year || "—"], ["N° de série (VIN)", info.vin || "Non communiqué"],
     ["Tension batterie", info.voltage ? fmt(info.voltage, 1) + " V" : "—"], ["Protocole", info.protocolName], ["Adaptateur", info.adapter || "ELM327"],
-    ["Calculateurs OBD", Object.values(info.ecus || {}).join(", ") || "Moteur"],
-    ["Diagnostic VW / Audi", info.vagCapable ? (info.vag ? "Disponible" : "Possible (CAN)") : "Non (véhicule non CAN)"],
+    ...(info.truck ? [["Type", "Poids lourd / bus (24 V)"]] : [["Calculateurs OBD", Object.values(info.ecus || {}).join(", ") || "Moteur"],
+    ["Diagnostic tous calculateurs", info.vagCapable ? (info.vag ? "Disponible (groupe VW)" : "Possible (recherche étendue)") : "Non (véhicule non CAN, avant ~2008)"]]),
   ].map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
   $("#vagNote").classList.toggle("bad", !info.vagCapable);
   renderVagTable();
-  if (!info.vag && info.brand) $("#vagNote").innerHTML = `Ce véhicule (${esc(info.brand)}) n'est pas du groupe VW : utilise « Défauts moteur (OBD) ». Le scan VW peut quand même être tenté.`;
+  if (info.truck) $("#vagNote").textContent = "Identification et défauts de chaque calculateur du camion (moteur EDC, boîte TipMatic, EBS, Intarder, ECAS, AdBlue/SCR…) par UDS sur CAN 29 bits. Lance « Recherche étendue » pour trouver tous les calculateurs présents.";
+  else if (!info.vag) $("#vagNote").textContent = `${info.brand || "Ce véhicule"} : le moteur et la boîte sont listés ci-dessous. Lance « Recherche étendue » pour trouver tous les autres calculateurs (ABS, airbag, BCM…). Les noms exacts dépendent du constructeur.`;
   go("connexion");
   toast("Connecté à " + title);
 }
@@ -208,7 +226,7 @@ function setVolt(v) {
   const b = $("#voltBox");
   if (!v) { b.textContent = ""; return; }
   b.textContent = "🔋 " + fmt(v, 1) + " V";
-  b.classList.toggle("low", v < 11.8);
+  b.classList.toggle("low", S.info?.truck ? v < 23.6 : v < 11.8);
 }
 setInterval(async () => { if (S.connected && !S.live && !S.working) { try { setVolt(await diag.voltage()); } catch {} } }, 20000);
 
@@ -220,10 +238,12 @@ $("#fullScanBtn").onclick = () => busy($("#fullScanBtn"), async () => {
   try {
     step(0.03, "Défauts moteur (OBD)…");
     S.obd = await diag.readDtcs(); renderDtcs();
-    step(0.12, "Tests antipollution…");
-    try { S.readiness = await diag.readiness(); renderCt(); } catch {}
-    step(0.18, "Arrêt sur image…");
-    try { S.freeze = await diag.freezeFrame(); renderFreeze(); } catch {}
+    if (!S.info.truck) {
+      step(0.12, "Tests antipollution…");
+      try { S.readiness = await diag.readiness(); renderCt(); } catch {}
+      step(0.18, "Arrêt sur image…");
+      try { S.freeze = await diag.freezeFrame(); renderFreeze(); } catch {}
+    }
     if (S.info.vagCapable) {
       const mods = S.modules;
       for (let i = 0; i < mods.length; i++) {
@@ -233,11 +253,11 @@ $("#fullScanBtn").onclick = () => busy($("#fullScanBtn"), async () => {
     }
     step(1, "Terminé");
     await saveHistory();
-    const nObd = S.obd.stored.length + S.obd.pending.length + S.obd.permanent.length;
+    const nObd = S.obd.stored.length + S.obd.pending.length + S.obd.permanent.length + (S.obd.previous || []).length;
     const modsWith = Object.values(S.vag).filter((m) => m.reachable && m.dtcs && m.dtcs.length);
     const nVag = modsWith.reduce((a, m) => a + m.dtcs.length, 0);
     await modal("Diagnostic terminé", `<ul>
-      <li><b>${nObd}</b> défaut(s) moteur OBD</li>
+      <li><b>${nObd}</b> défaut(s) ${S.info.truck ? "J1939" : "moteur OBD"}</li>
       ${S.info.vagCapable ? `<li><b>${Object.values(S.vag).filter((m) => m.reachable).length}</b> calculateur(s) trouvé(s), <b>${nVag}</b> défaut(s) dans ${modsWith.length} calculateur(s)</li>` : ""}
       ${S.readiness ? `<li>Voyant moteur : <b>${S.readiness.mil ? "ALLUMÉ" : "éteint"}</b></li>` : ""}</ul>`,
       [{ label: "Voir les calculateurs", value: "vag" }, { label: "Créer le rapport PDF", value: "pdf", cls: "primary" }]).then((v) => {
@@ -249,9 +269,9 @@ $("#fullScanBtn").onclick = () => busy($("#fullScanBtn"), async () => {
 
 // ---------- défauts OBD ----------
 function dtcHtml(d, kind) {
-  const cls = kind === "pending" ? "warn" : kind === "permanent" ? "info" : "";
-  return `<div class="dtc ${cls}"><div class="code">${esc(d.code)}</div><div class="desc"><b>${esc(d.description || d.category)}</b><small>${d.description ? esc(d.category) : "Code constructeur ou peu courant – voir la recherche internet"}${d.ecu ? " · calculateur " + esc(d.ecu) : ""}</small></div>
-    <button class="btn link" data-url="${esc(searchUrl(d.code, d.description))}">Rechercher ↗</button></div>`;
+  const cls = kind === "pending" || kind === "previous" ? "warn" : kind === "permanent" ? "info" : "";
+  return `<div class="dtc ${cls}"><div class="code">${esc(d.code)}</div><div class="desc"><b>${esc(d.description || d.category)}</b><small>${d.description ? esc(d.category) : "Code constructeur ou peu courant – voir la recherche internet"}${d.ecu ? " · " + (S.info?.truck ? "" : "calculateur ") + esc(d.ecu) : ""}${d.count ? " · " + d.count + " occurrence(s)" : ""}</small></div>
+    <button class="btn link" data-url="${esc(searchUrl(d.spn !== undefined ? `SPN ${d.spn} FMI ${d.fmi}` : d.code, d.description))}">Rechercher ↗</button></div>`;
 }
 function renderDtcs() {
   const o = S.obd, out = $("#dtcOut");
@@ -260,16 +280,21 @@ function renderDtcs() {
     ["stored", "Défauts mémorisés (confirmés)", "bad", "Ils allument en général le voyant moteur."],
     ["pending", "Défauts en attente", "warn", "Détectés une fois, pas encore confirmés. À surveiller."],
     ["permanent", "Défauts permanents", "info", "Ne s'effacent pas avec l'outil : la voiture les supprime d'elle-même après réparation et quelques trajets."],
+    ["previous", "Défauts passés (inactifs)", "warn", "Défauts apparus auparavant mais qui ne sont plus présents."],
   ];
-  const total = o.stored.length + o.pending.length + o.permanent.length;
-  out.innerHTML = (total === 0 ? `<div class="verdict ok"><span class="big">✓</span><div><b>Aucun défaut moteur</b>Le calculateur moteur n'a aucun code défaut OBD.</div></div>` : "") +
+  if (S.info?.truck) { groups[0][1] = "Défauts actifs"; groups[0][3] = "Présents en ce moment, envoyés par les calculateurs du camion."; }
+  o.previous = o.previous || [];
+  const total = o.stored.length + o.pending.length + o.permanent.length + o.previous.length;
+  const L = o.lamps;
+  const lamps = L ? `<div class="lamps"><span class="badge ${L.red ? "bad" : "ok"}">Témoin STOP rouge : ${L.red ? "allumé" : "éteint"}</span><span class="badge ${L.amber ? "warn" : "ok"}">Témoin orange : ${L.amber ? "allumé" : "éteint"}</span><span class="badge ${L.mil ? "bad" : "ok"}">Voyant moteur/antipollution : ${L.mil ? "allumé" : "éteint"}</span></div>` : "";
+  out.innerHTML = lamps + (total === 0 ? `<div class="verdict ok"><span class="big">✓</span><div><b>Aucun défaut</b>${S.info?.truck ? "Aucun calculateur du camion ne signale de défaut." : "Le calculateur moteur n'a aucun code défaut OBD."}</div></div>` : "") +
     groups.filter(([k]) => o[k].length).map(([k, t, c, sub]) => `<div class="group"><h2>${t} <span class="badge ${c}">${o[k].length}</span></h2><p class="muted" style="margin:-4px 0 8px">${sub}</p>${o[k].map((d) => dtcHtml(d, k)).join("")}</div>`).join("");
 }
 document.addEventListener("click", (e) => { const u = e.target.closest("[data-url]"); if (u) diag.openExternal(u.dataset.url); });
 $("#readDtcBtn").onclick = () => needConn() && busy($("#readDtcBtn"), async () => { S.obd = await diag.readDtcs(); renderDtcs(); saveHistory(); }).catch(() => {});
 $("#clearDtcBtn").onclick = async () => {
   if (!needConn()) return;
-  const ok = await confirmBox("Effacer les défauts moteur ?", `<p>Cela va :</p><ul><li>éteindre le voyant moteur (s'il revient, la panne est toujours là) ;</li><li>effacer l'arrêt sur image ;</li><li>remettre à zéro les tests antipollution (il faudra rouler avant un contrôle technique).</li></ul><p><b>Contact mis, moteur arrêté.</b> Pense à noter ou enregistrer les codes avant (rapport PDF).</p>`, "Effacer");
+  const ok = await confirmBox("Effacer les défauts ?", S.info?.truck ? `<p>Envoie l'ordre d'effacement J1939 (DM11) à tous les calculateurs du camion. Les défauts encore présents reviendront aussitôt.</p><p><b>Contact mis, moteur arrêté.</b> Pense à enregistrer les codes avant (rapport PDF).</p>` : `<p>Cela va :</p><ul><li>éteindre le voyant moteur (s'il revient, la panne est toujours là) ;</li><li>effacer l'arrêt sur image ;</li><li>remettre à zéro les tests antipollution (il faudra rouler avant un contrôle technique).</li></ul><p><b>Contact mis, moteur arrêté.</b> Pense à noter ou enregistrer les codes avant (rapport PDF).</p>`, "Effacer");
   if (!ok) return;
   busy($("#clearDtcBtn"), async () => { await diag.clearDtcs(); toast("Défauts effacés"); S.obd = await diag.readDtcs(); renderDtcs(); }).catch(() => {});
 };
@@ -317,7 +342,7 @@ function renderModule() {
     <div class="kv">${kv.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}</div>
     ${r.error ? `<p class="err">${esc(r.error)}</p>` : ""}
     <div class="group"><h2>Défauts <span class="badge ${r.dtcs.length ? "bad" : "ok"}">${r.dtcs.length}</span></h2>
-    ${r.dtcs.length ? r.dtcs.map((d) => `<div class="dtc ${d.status.active ? "" : "warn"}"><div class="code">${esc(d.code)}</div><div class="desc"><b>${esc(d.description || d.category)}${d.ftbText ? " – " + esc(d.ftbText) : ""}</b><small>${esc(d.status.label)}${d.status.warning ? " · voyant allumé" : ""}${d.description ? "" : " · code constructeur, voir la recherche internet"}</small></div><button class="btn link" data-url="${esc(searchUrl(d.base, d.description))}">Rechercher ↗</button></div>`).join("") : `<p class="muted">Aucun défaut dans ce calculateur.</p>`}</div>`;
+    ${r.dtcs.length ? r.dtcs.map((d) => `<div class="dtc ${d.status.active ? "" : "warn"}"><div class="code">${esc(d.code)}</div><div class="desc"><b>${esc(d.description || d.category)}${d.ftbText ? " – " + esc(d.ftbText) : ""}</b><small>${esc(d.status.label)}${d.status.warning ? " · voyant allumé" : ""}${d.description ? "" : " · code constructeur, voir la recherche internet"}</small></div><button class="btn link" data-url="${esc(searchUrl(d.spn !== undefined ? `SPN ${d.spn} FMI ${d.fmi}` : d.base, d.description))}">Rechercher ↗</button></div>`).join("") : `<p class="muted">Aucun défaut dans ce calculateur.</p>`}</div>`;
   $("#modRescan").onclick = () => busy($("#modRescan"), () => scanModule(m)).catch(() => {});
   $("#modClear").onclick = async () => {
     if (!await confirmBox(`Effacer les défauts du calculateur ${m.addr} ?`, `<p>${esc(m.name)}</p><p>Contact mis, moteur arrêté. Les défauts présents (actifs) reviendront tout de suite si la panne est toujours là.</p>`, "Effacer")) return;
@@ -367,6 +392,9 @@ $("#vagDiscover").onclick = async () => {
 
 // ---------- données en direct ----------
 const PRESETS = { moteur: [0x0c, 0x0d, 0x05, 0x04, 0x11, 0x0f, 0x10, 0x42], diesel: [0x0c, 0x0b, 0x23, 0x10, 0x2c, 0x62, 0x49, 0x0d], temp: [0x05, 0x0f, 0x5c, 0x46, 0x3c], none: [] };
+const PRESETS_TRUCK = { moteur: [1001, 1003, 1004, 1006, 1007, 1009, 1010, 1015], diesel: [1001, 1007, 1011, 1012, 1019, 1017, 1018], temp: [1004, 1005, 1008, 1013], none: [] };
+const presets = () => (S.info?.truck ? PRESETS_TRUCK : PRESETS);
+const pidKey = () => (S.info?.truck ? "pidsTruck" : "pids");
 let selPids = new Set(store.get("pids", PRESETS.moteur));
 async function loadPids() {
   try { S.pids = await diag.supportedPids(); } catch (e) { toast(cleanErr(e), true); return; }
@@ -374,10 +402,10 @@ async function loadPids() {
 }
 function renderPidList() {
   $("#pidList").innerHTML = S.pids.map((p) => `<label><input type="checkbox" value="${p.pid}" ${selPids.has(p.pid) ? "checked" : ""}> ${esc(p.name)} <span class="muted">${esc(p.unit)}</span></label>`).join("") || `<div class="empty">Aucun paramètre disponible.</div>`;
-  $$("#pidList input").forEach((c) => (c.onchange = () => { c.checked ? selPids.add(+c.value) : selPids.delete(+c.value); store.set("pids", [...selPids]); renderTiles(); }));
+  $$("#pidList input").forEach((c) => (c.onchange = () => { c.checked ? selPids.add(+c.value) : selPids.delete(+c.value); store.set(pidKey(), [...selPids]); renderTiles(); }));
   renderTiles();
 }
-$$("[data-preset]").forEach((b) => (b.onclick = () => { selPids = new Set(PRESETS[b.dataset.preset]); store.set("pids", [...selPids]); renderPidList(); }));
+$$("[data-preset]").forEach((b) => (b.onclick = () => { selPids = new Set(presets()[b.dataset.preset]); store.set(pidKey(), [...selPids]); renderPidList(); }));
 const activePids = () => S.pids.filter((p) => selPids.has(p.pid));
 function renderTiles() {
   $("#tiles").innerHTML = activePids().map((p) => `<div class="tile" id="tile-${p.pid}"><div class="n">${esc(p.name)}</div><div class="v"><span>—</span><small>${esc(p.unit)}</small></div><canvas width="400" height="80"></canvas><div class="mm"><span class="mn"></span><span class="mx"></span></div></div>`).join("") || (S.pids.length ? `<div class="empty">Coche des paramètres à gauche.</div>` : "");
@@ -421,7 +449,7 @@ $("#liveStart").onclick = async () => {
     }
     S.rec.push(row);
     for (const p of activePids()) drawTile(p);
-    if (vals[0x42]) setVolt(vals[0x42]);
+    if (vals[0x42] || vals[1009]) setVolt(vals[0x42] || vals[1009]);
     $("#liveRate").textContent = `${(1000 / (performance.now() - t0)).toFixed(1)} mesures/s`;
     await new Promise((r) => setTimeout(r, 50));
   }
@@ -462,7 +490,7 @@ function currentEntry() {
   const i = S.info || {};
   return {
     id: S.session?.id || Date.now().toString(36), date: S.session?.date || new Date().toISOString(),
-    vin: i.vin, brand: i.brand, year: i.year, voltage: i.voltage, protocol: i.protocolName, demo: i.demo,
+    vin: i.vin, brand: i.brand, truck: !!i.truck, year: i.year, voltage: i.voltage, protocol: i.protocolName, demo: i.demo,
     client: $("#repClient").value.trim(), km: $("#repKm").value.trim(), notes: $("#repNotes").value.trim(),
     obd: S.obd, readiness: S.readiness, freeze: S.freeze,
     modules: Object.values(S.vag).filter((m) => m && m.reachable).sort((a, b) => String(a.addr).localeCompare(String(b.addr))).map((m) => ({ addr: m.addr, name: m.name, systemName: m.systemName, partNumber: m.partNumber, software: m.software, dtcs: m.dtcs, error: m.error })),
@@ -482,7 +510,7 @@ $("#pdfBtn").onclick = () => {
 };
 async function renderHistory() {
   const h = await diag.history();
-  const n = (e) => (e.obd ? e.obd.stored.length + e.obd.pending.length : 0) + (e.modules || []).reduce((a, m) => a + (m.dtcs ? m.dtcs.length : 0), 0);
+  const n = (e) => (e.obd ? e.obd.stored.length + e.obd.pending.length + (e.obd.previous || []).length : 0) + (e.modules || []).reduce((a, m) => a + (m.dtcs ? m.dtcs.length : 0), 0);
   $("#histOut").innerHTML = h.length ? h.map((e) => `<div class="hist"><div class="grow"><b>${esc([e.brand, e.year].filter(Boolean).join(" ") || "Véhicule")} ${e.client ? "– " + esc(e.client) : ""}</b><small>${new Date(e.date).toLocaleString("fr-FR")} · ${esc(e.vin || "VIN inconnu")}${e.demo ? " · démo" : ""}</small></div><span class="badge ${n(e) ? "bad" : "ok"}">${n(e)} défaut(s)</span><button class="btn ghost mini" data-pdf="${e.id}">PDF</button><button class="btn link" data-del="${e.id}">Supprimer</button></div>`).join("") : `<div class="empty">Aucun diagnostic enregistré pour l'instant.</div>`;
   $$("[data-pdf]").forEach((b) => (b.onclick = () => exportPdf(h.find((e) => e.id === b.dataset.pdf))));
   $$("[data-del]").forEach((b) => (b.onclick = async () => { if (await confirmBox("Supprimer ce diagnostic de l'historique ?", "", "Supprimer")) { await diag.deleteHistory(b.dataset.del); renderHistory(); } }));

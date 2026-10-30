@@ -17,6 +17,7 @@ const PROTOCOLS = {
   "8": "ISO 15765-4 CAN (11 bits, 250 kbaud)",
   "9": "ISO 15765-4 CAN (29 bits, 250 kbaud)",
   "A": "SAE J1939 CAN (29 bits, 250 kbaud)",
+  "B": "SAE J1939 CAN (29 bits, 500 kbaud)",
 };
 
 class ElmError extends Error {}
@@ -48,17 +49,19 @@ class Elm {
   }
 
   // Envoie une commande brute et renvoie le texte reçu avant « > ». Sérialisé.
-  send(cmd, timeoutMs = 4000) {
+  send(cmd, timeoutMs = 4000, stopAfter = 0) {
     const run = () =>
       new Promise((resolve, reject) => {
         this.buf = "";
         const timer = setTimeout(() => {
           this.waiter = null;
           reject(new ElmError(`Pas de réponse de l'adaptateur à « ${cmd} »`));
-        }, timeoutMs);
+        }, timeoutMs + stopAfter);
         this.waiter = { resolve, timer };
         this.log("tx", cmd);
         this.t.write(cmd + "\r");
+        // mode écoute (ATMA, ATDM1, ATMP…) : n'importe quel caractère l'arrête
+        if (stopAfter) setTimeout(() => { if (this.waiter && this.waiter.timer === timer) this.t.write("\r"); }, stopAfter);
       }).then((raw) => {
         this.log("rx", raw.replace(/\r+/g, "\n").trim());
         return raw;
@@ -74,16 +77,7 @@ class Elm {
   }
 
   async init() {
-    // Réveil : certains clones ignorent le premier caractère
-    try { await this.send("", 1500); } catch {}
-    let id = "";
-    try { id = await this.at("ATZ", 5000); } catch { id = await this.at("ATZ", 5000); }
-    this.version = (id.match(/ELM327[^\r\n>]*/i) || [id])[0].trim();
-    await this.at("ATE0");
-    await this.at("ATL0");
-    await this.at("ATS1");
-    await this.at("ATH1");
-    await this.at("ATAT1");
+    await this.reset();
     await this.at("ATSP0");
     this.state = {};
     // Lance la recherche du protocole avec une vraie requête
@@ -97,8 +91,31 @@ class Elm {
     return { version: this.version, protocol: dp, protocolName: PROTOCOLS[dp] || dp };
   }
 
-  get isCan() { return ["6", "7", "8", "9"].includes(this.protocol); }
-  get is29() { return ["7", "9"].includes(this.protocol); }
+  async reset() {
+    // Réveil : certains clones ignorent le premier caractère
+    try { await this.send("", 1500); } catch {}
+    let id = "";
+    try { id = await this.at("ATZ", 5000); } catch { id = await this.at("ATZ", 5000); }
+    this.version = (id.match(/(ELM327|STN|OBDLink)[^\r\n>]*/i) || [id])[0].trim();
+    await this.at("ATE0");
+    await this.at("ATL0");
+    await this.at("ATS1");
+    await this.at("ATH1");
+    await this.at("ATAT1");
+    this.state = {};
+  }
+
+  get isCan() { return ["6", "7", "8", "9", "A", "B"].includes(this.protocol); }
+  get is29() { return ["7", "9", "A", "B"].includes(this.protocol); }
+  get isJ1939() { return ["A", "B"].includes(this.protocol); }
+
+  // Écoute du bus pendant « ms » millisecondes (trames brutes)
+  async monitor(cmd, ms) {
+    const raw = await this.send(cmd, 3000, ms);
+    const save = this.protocol;
+    if (!this.isJ1939) this.protocol = "A"; // trames brutes, sans réassemblage
+    try { return this.parse(raw); } finally { this.protocol = save; }
+  }
 
   async voltage() {
     const v = await this.at("ATRV");
@@ -138,6 +155,7 @@ class Elm {
           bytes = tok.slice(1).map((h) => parseInt(h, 16));
         }
         if (!bytes.length) continue;
+        if (this.isJ1939) { msgs.push({ id, data: bytes }); continue; }
         const type = bytes[0] >> 4;
         if (type === 0) {
           const len = bytes[0] & 0x0f;
@@ -168,7 +186,8 @@ class Elm {
   // ---- Communication directe avec un calculateur (CAN 11 bits) ----
   async target(reqId, respId) {
     const s = this.state;
-    if (s.sh !== reqId) { await this.at(`ATSH${reqId}`); s.sh = reqId; }
+    if (reqId.length === 8 && s.cp !== reqId.slice(0, 2)) { await this.at(`ATCP${reqId.slice(0, 2)}`); s.cp = reqId.slice(0, 2); }
+    if (s.sh !== reqId) { await this.at(`ATSH${reqId.length === 8 ? reqId.slice(2) : reqId}`); s.sh = reqId; }
     if (s.cra !== respId) { await this.at(`ATCRA${respId}`); s.cra = respId; }
     if (s.fcsh !== reqId) {
       await this.at(`ATFCSH${reqId}`);
@@ -188,7 +207,8 @@ class Elm {
     if (s.sh || s.cra || s.fcsm || s.st) {
       try { await this.at("ATCRA"); } catch {}
       try { await this.at("ATFCSM0"); } catch {}
-      try { await this.at(this.is29 ? "ATSH18DB33F1" : "ATSH7DF"); } catch {}
+      if (this.is29) { try { await this.at("ATCP18"); await this.at("ATSHDB33F1"); } catch {} }
+      else { try { await this.at("ATSH7DF"); } catch {} }
       try { await this.at("ATST32"); } catch {}
       try { await this.at("ATAT1"); } catch {}
     }

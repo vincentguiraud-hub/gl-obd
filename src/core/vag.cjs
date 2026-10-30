@@ -20,6 +20,7 @@ const MODULES = [
   { addr: "19", name: "Passerelle de diagnostic (gateway)", req: 0x710 },
   { addr: "44", name: "Direction assistée", req: 0x712 },
   { addr: "5F", name: "Électronique d'information (multimédia)", req: 0x773 },
+  { addr: "8C", name: "Batterie haute tension (hybride / électrique)", req: 0x7e5, resp: 0x7ed },
 ].map((m) => ({ ...m, resp: m.resp || m.req + 0x6a }));
 
 function ascii(bytes) {
@@ -38,10 +39,16 @@ function statusInfo(s) {
   };
 }
 
-class Vag {
-  constructor(elm) { this.elm = elm; }
+// Autres marques : adresses OBD standard (réponse = requête + 8)
+const GENERIC = [
+  { addr: "7E0", name: "Électronique moteur", req: 0x7e0, resp: 0x7e8 },
+  { addr: "7E1", name: "Boîte de vitesses", req: 0x7e1, resp: 0x7e9 },
+];
 
-  modules() { return MODULES.map((m) => ({ ...m, reqHex: hex3(m.req), respHex: hex3(m.resp) })); }
+class Vag {
+  constructor(elm) { this.elm = elm; this.generic = false; }
+
+  modules() { return (this.generic ? GENERIC : MODULES).map((m) => ({ ...m, reqHex: hex3(m.req), respHex: hex3(m.resp) })); }
 
   async ensureCan() {
     if (this.elm.protocol === "6") return;
@@ -123,7 +130,12 @@ class Vag {
     }
     // certains calculateurs demandent la session étendue
     await this.elm.uds("1003", 4000);
-    const r = await this.elm.uds("14FFFFFF", 8000);
+    let r;
+    try { r = await this.elm.uds("14FFFFFF", 8000); }
+    catch (e) {
+      if (e.nrc === 0x33) throw new Error("Calculateur protégé (passerelle sécurisée SFD des VW/Audi/Seat/Škoda 2020 et plus) : la lecture fonctionne, mais l'effacement exige un déverrouillage en ligne constructeur.");
+      throw e;
+    }
     try { await this.elm.uds("1001", 2000); } catch {}
     if (r && r[0] === 0x54) return true;
     throw new Error("Le calculateur n'a pas confirmé l'effacement.");
@@ -141,21 +153,26 @@ class Vag {
   async discover(onProgress = () => {}) {
     await this.ensureCan();
     const found = [];
-    const start = 0x700, end = 0x77f;
-    for (let req = start; req <= end; req++) {
-      onProgress((req - start) / (end - start + 1), hex3(req));
-      const m = { req, resp: req + 0x6a };
+    // VW : réponse = requête + 0x6A ; autres marques : + 8. Puis 7E0–7E7 (moteur, boîte, hybride…)
+    const off = this.generic ? 8 : 0x6a;
+    const list = [];
+    for (let r = 0x700; r <= (this.generic ? 0x7d7 : 0x77f); r++) list.push([r, r + off]);
+    for (let r = 0x7e0; r <= 0x7e7; r++) list.push([r, r + 8]);
+    for (let i = 0; i < list.length; i++) {
+      const [req, resp] = list[i];
+      onProgress(i / list.length, hex3(req));
+      const m = { req, resp };
       try {
         await this.open(m, true);
         let r = null;
         try { r = await this.elm.uds("22F197", 1500); } catch (e) { if (e.nrc !== undefined) r = []; }
-        if (r) found.push({ req, resp: req + 0x6a, name: r[0] === 0x62 ? ascii(r.slice(3)) : null });
+        if (r) found.push({ req, resp, name: r[0] === 0x62 ? ascii(r.slice(3)) : null });
       } catch {}
     }
     onProgress(1, "");
     return found.map((f) => {
-      const known = MODULES.find((k) => k.req === f.req);
-      return { addr: known ? known.addr : hex3(f.req), name: f.name || (known ? known.name : `Calculateur ${hex3(f.req)}`), req: f.req, resp: f.resp, reqHex: hex3(f.req), respHex: hex3(f.resp) };
+      const known = (this.generic ? GENERIC : MODULES).find((k) => k.req === f.req);
+      return { addr: known ? known.addr : hex3(f.req), name: known ? known.name : f.name || `Calculateur ${hex3(f.req)}`, req: f.req, resp: f.resp, reqHex: hex3(f.req), respHex: hex3(f.resp) };
     });
   }
 

@@ -14,11 +14,11 @@
   </div>
   <nav id="nav">
     <a data-page="connexion" class="active"><i>⚡</i>Connexion</a>
-    <a data-page="defauts"><i>⚠</i>Défauts moteur (OBD)</a>
-    <a data-page="vag"><i>▦</i>Calculateurs VW / Audi</a>
+    <a data-page="defauts"><i>⚠</i><span id="navDtc">Défauts moteur (OBD)</span></a>
+    <a data-page="vag"><i>▦</i><span id="navVag">Calculateurs</span></a>
     <a data-page="live"><i>◔</i>Données en direct</a>
-    <a data-page="ct"><i>✓</i>Préparation CT</a>
-    <a data-page="freeze"><i>❄</i>Arrêt sur image</a>
+    <a data-page="ct" class="carOnly"><i>✓</i>Préparation CT</a>
+    <a data-page="freeze" class="carOnly"><i>❄</i>Arrêt sur image</a>
     <a data-page="rapports"><i>▤</i>Rapports &amp; historique</a>
     <a data-page="terminal"><i>›_</i>Terminal ELM327</a>
   </nav>
@@ -38,7 +38,13 @@
     <h1>Connexion à l'adaptateur</h1>
     <div class="grid2">
       <div class="card">
-        <h2>1. Type d'adaptateur ELM327</h2>
+        <h2>1. Type de véhicule</h2>
+        <div class="choices" id="vehTypes">
+          <label class="choice"><input type="radio" name="vtype" value="car" checked><b>Voiture / utilitaire</b><small>Toutes marques 2001 → 2026, dont VW, Audi, Seat, Škoda, Cupra, MAN TGE</small></label>
+          <label class="choice"><input type="radio" name="vtype" value="truck"><b>Poids lourd / bus</b><small>MAN TGL, TGM, TGS, TGX, Lion's… (J1939, 24 V)</small></label>
+        </div>
+        <p class="alert hidden" id="truckWarn">⚠ Camion en <b>24 V</b> : utilise un adaptateur prévu pour le 12/24 V et compatible <b>J1939</b> (ex. OBDLink MX+, Vgate vLinker FS/MS, ELM327 v2.x « 24V »). Un petit ELM327 12 V peut griller.</p>
+        <h2 class="mt">2. Type d'adaptateur ELM327</h2>
         <div class="choices" id="connTypes">
           <label class="choice"><input type="radio" name="ctype" value="serial" checked><b>Bluetooth</b><small>Appairé dans Windows (port COM)</small></label>
           <label class="choice"><input type="radio" name="ctype" value="wifi"><b>WiFi</b><small>PC connecté au WiFi de l'adaptateur</small></label>
@@ -64,7 +70,7 @@
           <p class="muted">Clique sur « Se connecter » : la liste des appareils Bluetooth à proximité s'affiche, choisis ton adaptateur (souvent « OBDII », « IOS-Vlink », « Vgate », « VEEPEAK »…).</p>
         </div>
         <div class="opts hidden" id="opt-demo">
-          <p class="muted">Simule un VW Crafter 2019 2.0 TDI avec quelques défauts, pour découvrir le logiciel.</p>
+          <p class="muted" id="demoText">Simule un VW Crafter 2019 2.0 TDI avec quelques défauts, pour découvrir le logiciel.</p>
         </div>
 
         <div class="row mt">
@@ -93,20 +99,20 @@
         <button class="btn danger" id="clearDtcBtn">Effacer les défauts</button>
       </div>
     </div>
-    <p class="muted">Codes génériques lus sur toutes les marques (norme OBD-II). Pour les autres calculateurs (ABS, airbag, tableau de bord…) d'un véhicule du groupe VW, va dans « Calculateurs VW / Audi ».</p>
+    <p class="muted" id="dtcNote">Codes génériques lus sur toutes les marques (norme OBD-II). Pour les autres calculateurs (ABS, airbag, tableau de bord…) d'un véhicule du groupe VW, va dans « Calculateurs VW / Audi ».</p>
     <div id="dtcOut"><div class="empty">Clique sur « Lire les défauts ».</div></div>
   </section>
 
   <!-- VAG -->
   <section class="page hidden" id="page-vag">
     <div class="row between">
-      <h1>Calculateurs VW · Audi · Seat · Škoda · MAN</h1>
+      <h1 id="vagTitle">Calculateurs VW · Audi · Seat · Škoda · Cupra · MAN TGE</h1>
       <div class="row">
         <button class="btn primary" id="vagScanAll">Scanner tous les calculateurs</button>
         <button class="btn ghost" id="vagDiscover" title="Balaye toutes les adresses pour trouver les calculateurs présents">Recherche étendue</button>
       </div>
     </div>
-    <p class="muted" id="vagNote">Fonctionne sur les véhicules récents du groupe VW (plateforme MQB et suivantes, environ 2013 et plus : Golf 7/8, Polo 6, Passat B8, Tiguan 2, A3 8V, Leon 3, Octavia 3, Crafter 2017+, MAN TGE…).</p>
+    <p class="muted" id="vagNote">Groupe VW de 2013 à 2026 (MQB, MQB evo, MLB evo, MEB électriques : Golf 7/8, Polo, Passat, Tiguan, T-Roc, ID.3/ID.4, A3, A4, Q5, Leon, Octavia, Crafter 2017+, MAN TGE…). Autres marques : utilise « Recherche étendue ».</p>
     <div class="progress hidden" id="vagProg"><div></div><span></span></div>
     <div class="split">
       <div class="card flush"><table class="tbl" id="vagTable"><thead><tr><th>Adr.</th><th>Calculateur</th><th>État</th></tr></thead><tbody></tbody></table></div>

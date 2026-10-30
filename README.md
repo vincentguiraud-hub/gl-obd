@@ -3,7 +3,9 @@
 Logiciel Windows de diagnostic OBD pour adaptateur ELM327 (Bluetooth, WiFi, BLE).
 
 - Défauts moteur OBD toutes marques (lecture / effacement), arrêt sur image, préparation contrôle technique
-- Calculateurs VW, Audi, Seat, Škoda, Cupra, MAN TGE (UDS, plateformes MQB et suivantes) : identification, défauts, effacement
+- Calculateurs VW, Audi, Seat, Škoda, Cupra, MAN TGE de 2013 à 2026 (UDS) : identification, défauts, effacement
+- Autres marques : recherche étendue de tous les calculateurs (UDS 11 bits)
+- Poids lourds MAN (TGL, TGM, TGS, TGX, Lion's) et autres camions J1939 : défauts actifs/passés (SPN/FMI), effacement, données en direct, calculateurs UDS 29 bits
 - Données en direct avec courbes et export CSV
 - Rapport PDF et historique des diagnostics
 - Mode démo intégré

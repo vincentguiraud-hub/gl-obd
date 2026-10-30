@@ -6,6 +6,8 @@ const { Obd, PIDS, decodeVin } = require("./obd.cjs");
 const { Vag } = require("./vag.cjs");
 const { TcpTransport, SerialTransport, BridgeTransport } = require("./transports.cjs");
 const { SimTransport } = require("./sim.cjs");
+const { SimTruckTransport } = require("./simtruck.cjs");
+const { Hd, TRUCK_MODULES } = require("./hd.cjs");
 
 class Diag extends EventEmitter {
   constructor() {
@@ -33,7 +35,8 @@ class Diag extends EventEmitter {
     if (opts.type === "wifi") t = new TcpTransport(opts.host || "192.168.0.10", Number(opts.port) || 35000);
     else if (opts.type === "serial") t = new SerialTransport(opts.path, Number(opts.baud) || 38400);
     else if (opts.type === "ble") t = new BridgeTransport(bridgeSend);
-    else t = new SimTransport();
+    else t = opts.vehicle === "truck" ? new SimTruckTransport() : new SimTransport();
+    const truck = opts.vehicle === "truck";
     this.emit("status", { state: "connecting", text: "Connexion à l'adaptateur…" });
     await t.open();
     this.t = t;
@@ -43,12 +46,14 @@ class Diag extends EventEmitter {
     const elm = new Elm(t, (d, x) => this.log(d, x));
     try {
       this.emit("status", { state: "connecting", text: "Initialisation de l'ELM327…" });
-      const r = await elm.init();
-      this.elm = elm;
       this.obd = new Obd(elm);
       this.vag = new Vag(elm);
+      this.hd = new Hd(elm);
+      this.mode = truck ? "truck" : "car";
+      const r = truck ? await this.hd.init() : await elm.init();
+      this.elm = elm;
       this.emit("status", { state: "connecting", text: "Lecture du véhicule…" });
-      this.info = await this.readVehicle(r, opts.type === "demo" || !opts.type);
+      this.info = truck ? await this.readTruck(r, opts.type === "demo" || !opts.type) : await this.readVehicle(r, opts.type === "demo" || !opts.type);
       this.emit("status", { state: "connected", text: "Connecté", info: this.info });
       return this.info;
     } catch (e) {
@@ -65,6 +70,7 @@ class Diag extends EventEmitter {
     try { voltage = await this.elm.voltage(); } catch {}
     try { ecus = await this.obd.ecuNames(); } catch {}
     const dec = decodeVin(vin);
+    this.vag.generic = !dec.vag && !!dec.brand;
     return {
       demo,
       adapter: r.version,
@@ -75,6 +81,17 @@ class Diag extends EventEmitter {
       brand: dec.brand, year: dec.year, vag: dec.vag,
       // les calculateurs VW nécessitent du CAN 11 bits (VW ≈ 2008+)
       vagCapable: this.elm.isCan,
+    };
+  }
+
+  async readTruck(r, demo) {
+    let vin = null, voltage = null;
+    try { vin = await this.hd.vin(); } catch {}
+    try { voltage = await this.elm.voltage(); } catch {}
+    const dec = decodeVin(vin);
+    return {
+      demo, truck: true, adapter: r.version, protocol: r.protocol, protocolName: r.protocolName, isCan: true,
+      vin, voltage, ecus: {}, brand: dec.brand || "Poids lourd", year: dec.year, vag: false, vagCapable: true,
     };
   }
 
@@ -89,36 +106,36 @@ class Diag extends EventEmitter {
 
   need() { if (!this.elm) throw new Error("Pas connecté à l'adaptateur. Va dans « Connexion » d'abord."); }
 
-  voltage() { return this.run(async () => { this.need(); await this.leaveVag(); return this.elm.voltage(); }); }
-  readDtcs() { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.readAllDtcs(); }); }
-  clearDtcs() { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.clearDtcs(); }); }
-  readiness() { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.readiness(); }); }
-  freezeFrame() { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.freezeFrame(); }); }
+  voltage() { return this.run(async () => { this.need(); return this.elm.voltage(); }); }
+  get truck() { return this.mode === "truck"; }
+  readDtcs() { return this.run(async () => { this.need(); await this.leaveVag(); return this.truck ? this.hd.readDtcs() : this.obd.readAllDtcs(); }); }
+  clearDtcs() { return this.run(async () => { this.need(); await this.leaveVag(); return this.truck ? this.hd.clearDtcs() : this.obd.clearDtcs(); }); }
+  readiness() { return this.run(async () => { this.need(); if (this.truck) throw new Error("Non disponible sur poids lourd."); await this.leaveVag(); return this.obd.readiness(); }); }
+  freezeFrame() { return this.run(async () => { this.need(); if (this.truck) throw new Error("Non disponible sur poids lourd."); await this.leaveVag(); return this.obd.freezeFrame(); }); }
 
   supportedPids() {
     return this.run(async () => {
       this.need(); await this.leaveVag();
+      if (this.truck) return this.hd.params();
       const list = await this.obd.supportedPids();
       return list.filter((p) => PIDS[p]).map((p) => ({ pid: p, name: PIDS[p].name, unit: PIDS[p].unit, min: PIDS[p].min ?? 0, max: PIDS[p].max ?? null, dec: PIDS[p].dec ?? (["°C", "%", "kPa"].includes(PIDS[p].unit) ? 0 : 1) }));
     });
   }
-  readPids(pids) { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.readPids(pids); }); }
+  readPids(pids) { return this.run(async () => { this.need(); await this.leaveVag(); return this.truck ? this.hd.readParams(pids) : this.obd.readPids(pids); }); }
 
-  async leaveVag() { if (this.inVag) { await this.vag.done(); this.inVag = false; } }
+  async leaveVag() { if (this.inVag && !this.truck) { await this.vag.done(); this.inVag = false; } }
 
-  vagModules() { return this.vag ? this.vag.modules() : new Vag(null).modules(); }
-  vagScanModule(m) { return this.run(async () => { this.need(); this.inVag = true; return this.vag.scanModule(m); }); }
-  vagClear(m) { return this.run(async () => { this.need(); this.inVag = true; return this.vag.clearDtcs(m); }); }
+  vagModules() {
+    if (this.truck) return TRUCK_MODULES;
+    return this.vag ? this.vag.modules() : new Vag(null).modules();
+  }
+  vagScanModule(m) { return this.run(async () => { this.need(); this.inVag = true; return this.truck ? this.hd.scanModule(m) : this.vag.scanModule(m); }); }
+  vagClear(m) { return this.run(async () => { this.need(); this.inVag = true; return this.truck ? this.hd.clearModule(m) : this.vag.clearDtcs(m); }); }
   vagDiscover(onProgress) {
     return this.run(async () => {
       this.need(); this.inVag = true;
-      const list = await this.vag.discover(onProgress);
-      // moteur et boîte sont hors de la plage balayée
-      for (const m of this.vag.modules().filter((x) => x.req >= 0x7e0)) {
-        const id = await this.vag.identify(m);
-        if (id) list.unshift({ ...m, name: m.name });
-      }
-      return list;
+      if (this.truck) return this.hd.discover(onProgress);
+      return this.vag.discover(onProgress);
     });
   }
 

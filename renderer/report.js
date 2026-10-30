@@ -5,16 +5,16 @@ function buildReport(e) {
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmt = (v, d = 0) => (v === undefined || v === null ? "—" : Number(v).toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }));
   const date = new Date(e.date);
-  const obd = e.obd || { stored: [], pending: [], permanent: [] };
+  const obd = { stored: [], pending: [], permanent: [], previous: [], ...(e.obd || {}) };
   const mods = e.modules || [];
-  const nObd = obd.stored.length + obd.pending.length + obd.permanent.length;
+  const nObd = obd.stored.length + obd.pending.length + obd.permanent.length + obd.previous.length;
   const nVag = mods.reduce((a, m) => a + (m.dtcs ? m.dtcs.length : 0), 0);
   const r = e.readiness;
 
   const dtcRows = (list, label) => list.map((d) => `<tr><td class="c">${esc(d.code)}</td><td>${esc(d.description || d.category)}${d.ftbText ? " – " + esc(d.ftbText) : ""}</td><td>${esc(label || (d.status && d.status.label) || "")}</td></tr>`).join("");
   const obdBlock = nObd
-    ? `<table><thead><tr><th style="width:90px">Code</th><th>Description</th><th style="width:170px">État</th></tr></thead><tbody>${dtcRows(obd.stored, "Mémorisé (confirmé)")}${dtcRows(obd.pending, "En attente")}${dtcRows(obd.permanent, "Permanent")}</tbody></table>`
-    : `<p class="ok">✓ Aucun défaut moteur OBD.</p>`;
+    ? `<table><thead><tr><th style="width:90px">Code</th><th>Description</th><th style="width:170px">État</th></tr></thead><tbody>${dtcRows(obd.stored, e.truck ? "Actif" : "Mémorisé (confirmé)")}${dtcRows(obd.pending, "En attente")}${dtcRows(obd.permanent, "Permanent")}${dtcRows(obd.previous, "Passé (inactif)")}</tbody></table>`
+    : `<p class="ok">✓ Aucun défaut.</p>`;
 
   const modBlock = mods.length
     ? mods.map((m) => `<div class="mod"><div class="mh"><b>${esc(m.addr)} – ${esc(m.name)}</b><span>${esc([m.systemName, m.partNumber, m.software && "logiciel " + m.software].filter(Boolean).join(" · "))}</span></div>
@@ -39,7 +39,7 @@ function buildReport(e) {
   .veh span{display:block;font-size:8.5pt;color:#6b7380}.veh b{font-size:10.5pt;word-break:break-all}
   .sum{display:flex;gap:10px;margin-top:12px}.sum div{flex:1;border:1px solid #e2e5ea;border-radius:8px;padding:8px 12px}.sum b{font-size:18pt;display:block}
   table{width:100%;border-collapse:collapse;font-size:10pt}th{text-align:left;background:#f5f6f8;font-size:9pt;color:#555}
-  td,th{padding:5px 8px;border-bottom:1px solid #e8eaee;vertical-align:top}td.c{font-family:Consolas,monospace;font-weight:700;white-space:nowrap;width:90px}
+  td,th{padding:5px 8px;border-bottom:1px solid #e8eaee;vertical-align:top}td.c{font-family:Consolas,monospace;font-weight:700;white-space:nowrap;width:120px}
   table.two td:first-child{width:60%}
   .mod{border:1px solid #e2e5ea;border-radius:8px;margin-bottom:8px;page-break-inside:avoid;overflow:hidden}
   .mh{background:#f5f6f8;padding:6px 10px;display:flex;justify-content:space-between;gap:10px}.mh span{color:#6b7380;font-size:9pt}
@@ -57,9 +57,9 @@ function buildReport(e) {
     <div><span>Tension batterie</span><b>${e.voltage ? fmt(e.voltage, 1) + " V" : "—"}</b></div>
     <div><span>Protocole</span><b>${esc(e.protocol || "—")}</b></div>
   </div>
-  <div class="sum"><div><span>Défauts moteur (OBD)</span><b class="${nObd ? "bad" : "okc"}">${nObd}</b></div><div><span>Défauts autres calculateurs</span><b class="${nVag ? "bad" : "okc"}">${nVag}</b></div><div><span>Calculateurs lus</span><b>${mods.length}</b></div>${r ? `<div><span>Voyant moteur</span><b class="${r.mil ? "bad" : "okc"}">${r.mil ? "Allumé" : "Éteint"}</b></div>` : ""}</div>
+  <div class="sum"><div><span>${e.truck ? "Défauts J1939" : "Défauts moteur (OBD)"}</span><b class="${nObd ? "bad" : "okc"}">${nObd}</b></div><div><span>Défauts autres calculateurs</span><b class="${nVag ? "bad" : "okc"}">${nVag}</b></div><div><span>Calculateurs lus</span><b>${mods.length}</b></div>${r ? `<div><span>Voyant moteur</span><b class="${r.mil ? "bad" : "okc"}">${r.mil ? "Allumé" : "Éteint"}</b></div>` : ""}</div>
   ${e.notes ? `<h2>Remarques</h2><div class="notes">${esc(e.notes)}</div>` : ""}
-  <h2>Défauts moteur / antipollution (OBD)</h2>${obdBlock}
+  <h2>${e.truck ? "Défauts poids lourd (J1939)" : "Défauts moteur / antipollution (OBD)"}</h2>${obdBlock}
   <h2>Calculateurs</h2>${modBlock}
   ${ff}${ready}
   <div class="ft">Rapport généré par G&amp;L Diag${e.demo ? " – MODE DÉMONSTRATION (données simulées)" : ""}. Les codes défaut indiquent la zone de la panne détectée par le calculateur ; un contrôle des composants est nécessaire avant tout remplacement de pièce.</div>

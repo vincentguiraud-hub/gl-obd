@@ -144,3 +144,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #f39a4a66; border
 .btn.ghost .spin, .btn.danger .spin { border-color: #0002; border-top-color: var(--orange); }
 @keyframes sp { to { transform: rotate(360deg); } }
 @media (max-width: 1180px) { .grid2, .split, .split.live { grid-template-columns: 1fr; } }
+.alert { color: #8a5a00; background: #fff3e0; padding: 10px 12px; border-radius: 8px; margin: 10px 0 0; font-size: 13px; }
+body.truck .carOnly { display: none; }
+.lamps { display: flex; gap: 10px; margin-top: 12px; align-items: flex-start; flex-wrap: wrap; }
