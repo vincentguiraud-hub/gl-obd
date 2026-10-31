@@ -46,12 +46,15 @@ class SerialTransport extends EventEmitter {
     const { SerialPort } = require("serialport");
     const ports = await SerialPort.list();
     return ports.map((p) => {
-      const bt = /BTHENUM|bluetooth/i.test(`${p.pnpId || ""} ${p.manufacturer || ""} ${p.friendlyName || ""}`);
+      const txt = `${p.pnpId || ""} ${p.manufacturer || ""} ${p.friendlyName || ""}`;
+      const bt = /BTHENUM|bluetooth/i.test(txt);
+      const obd = /FTDI|OBDLink|vLinker|Vgate|ScanTool|CH340|CP210|Silicon Labs|STN/i.test(txt);
       return {
         path: p.path,
         label: p.friendlyName || `${p.path}${p.manufacturer ? " – " + p.manufacturer : ""}`,
         bluetooth: bt,
         usb: !!p.vendorId,
+        obd,
       };
     });
   }

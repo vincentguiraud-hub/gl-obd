@@ -33,6 +33,20 @@ class Diag extends EventEmitter {
   get connected() { return !!this.elm; }
 
   async connect(opts, bridgeSend) {
+    // Câble USB / port COM : si la vitesse choisie ne répond pas, on essaie les autres
+    if (opts.type === "serial" && !opts.noAuto) {
+      const rates = [Number(opts.baud) || 38400, 115200, 38400, 500000, 230400, 9600, 2000000].filter((v, i, a) => a.indexOf(v) === i);
+      let last;
+      for (const baud of rates) {
+        try { return await this.connect({ ...opts, baud, noAuto: true }, bridgeSend); }
+        catch (e) {
+          last = e;
+          if (!/Pas de réponse de l'adaptateur/.test(e.message)) throw e;
+          this.emit("status", { state: "connecting", text: `Essai à ${baud} bauds sans réponse, autre vitesse…` });
+        }
+      }
+      throw new Error("L'adaptateur ne répond à aucune vitesse. Vérifie qu'il est bien branché sur la prise OBD (voyant allumé) et que le bon port COM est choisi.");
+    }
     await this.disconnect();
     let t;
     if (opts.type === "wifi") t = new TcpTransport(opts.host || "192.168.0.10", Number(opts.port) || 35000);

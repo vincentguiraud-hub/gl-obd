@@ -52,7 +52,7 @@
         <p class="alert hidden" id="truckWarn">⚠ Camion en <b>24 V</b> : utilise un adaptateur prévu pour le 12/24 V et compatible <b>J1939</b> (ex. OBDLink MX+, Vgate vLinker FS/MS, ELM327 v2.x « 24V »). Un petit ELM327 12 V peut griller.</p>
         <h2 class="mt">2. Type d'adaptateur ELM327</h2>
         <div class="choices" id="connTypes">
-          <label class="choice"><input type="radio" name="ctype" value="serial" checked><b>Bluetooth</b><small>Appairé dans Windows (port COM)</small></label>
+          <label class="choice"><input type="radio" name="ctype" value="serial" checked><b>USB ou Bluetooth</b><small>Câble USB, ou Bluetooth appairé (port COM)</small></label>
           <label class="choice"><input type="radio" name="ctype" value="wifi"><b>WiFi</b><small>PC connecté au WiFi de l'adaptateur</small></label>
           <label class="choice"><input type="radio" name="ctype" value="ble"><b>Bluetooth BLE</b><small>Modèles « iPhone / 4.0 / LE »</small></label>
           <label class="choice"><input type="radio" name="ctype" value="demo"><b>Mode démo</b><small>Essayer sans voiture</small></label>
@@ -62,7 +62,7 @@
           <label>Port COM
             <div class="row"><select id="portSel"></select><button class="btn ghost" id="refreshPorts" title="Actualiser">↻</button></div>
           </label>
-          <label>Vitesse (seulement pour les câbles USB)
+          <label>Vitesse (trouvée automatiquement si elle ne répond pas)
             <select id="baudSel"><option>38400</option><option>9600</option><option>115200</option><option>230400</option><option>500000</option></select>
           </label>
         </div>

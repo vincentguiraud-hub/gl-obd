@@ -54,7 +54,12 @@ $$("#nav a").forEach((a) => (a.onclick = () => go(a.dataset.page)));
 
 // ---------- connexion ----------
 const HELP = {
-  serial: `<h2>Adaptateur Bluetooth : première utilisation</h2><ol>
+  serial: `<h2>Câble USB (vLinker, OBDLink…)</h2><ol>
+    <li>Branche le câble sur la prise OBD (sous le volant) puis sur le PC, et <b>mets le contact</b>.</li>
+    <li>Windows installe le pilote tout seul (1 minute la première fois) et crée un <b>port COM</b>.</li>
+    <li>Clique sur ↻ : le câble apparaît en premier dans la liste avec la mention USB.</li>
+    <li>Clique sur <b>Se connecter</b> : la vitesse est trouvée automatiquement.</li></ol>
+    <h2 class="mt">Adaptateur Bluetooth classique</h2><ol>
     <li>Branche l'adaptateur sur la prise OBD (sous le volant) et <b>mets le contact</b>.</li>
     <li>Sur le PC : <b>Paramètres → Bluetooth et appareils → Ajouter un appareil → Bluetooth</b>.</li>
     <li>Choisis l'adaptateur (« OBDII », « V-LINK », « OBD2 »…). Code demandé : <b>1234</b> (ou 0000, 6789).</li>
@@ -105,7 +110,7 @@ async function refreshPorts() {
   const sel = $("#portSel");
   try {
     const ports = await diag.listPorts();
-    ports.sort((a, b) => b.bluetooth - a.bluetooth);
+    ports.sort((a, b) => (b.obd - a.obd) || (b.usb - a.usb) || (b.bluetooth - a.bluetooth));
     sel.innerHTML = ports.length ? ports.map((p) => `<option value="${esc(p.path)}">${esc(p.label)}${p.bluetooth ? " · Bluetooth" : p.usb ? " · USB" : ""}</option>`).join("") : `<option value="">Aucun port COM trouvé – appaire l'adaptateur</option>`;
     const last = store.get("port", null);
     if (last && ports.find((p) => p.path === last)) sel.value = last;
