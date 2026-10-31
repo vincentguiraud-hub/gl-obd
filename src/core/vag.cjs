@@ -43,6 +43,8 @@ function statusInfo(s) {
 const GENERIC = [
   { addr: "7E0", name: "Électronique moteur", req: 0x7e0, resp: 0x7e8 },
   { addr: "7E1", name: "Boîte de vitesses", req: 0x7e1, resp: 0x7e9 },
+  // 7E2–7E7 : plage OBD standard, le rôle exact dépend de la marque (ABS, hybride, carrosserie…)
+  ...[2, 3, 4, 5, 6, 7].map((n) => ({ addr: "7E" + n, name: `Calculateur OBD 7E${n} (rôle selon la marque)`, req: 0x7e0 + n, resp: 0x7e8 + n })),
 ];
 
 class Vag {
