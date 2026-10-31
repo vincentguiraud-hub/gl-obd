@@ -69,6 +69,21 @@ const api = {
     return target;
   },
   // sauvegarde automatique avant toute écriture dans un calculateur
+  teslaPoll: () => diag.teslaPoll(),
+  teslaAll: (ms) => diag.teslaAll(ms),
+  listBackups: () => {
+    const dir = path.join(app.getPath("documents"), "G&L Diag", "Sauvegardes");
+    try { return fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort().reverse().slice(0, 300).map((f) => { try { return { file: f, ...JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")) }; } catch { return null; } }).filter(Boolean); } catch { return []; }
+  },
+  recipes: () => { try { return JSON.parse(fs.readFileSync(path.join(app.getPath("userData"), "options.json"), "utf8")); } catch { return []; } },
+  saveRecipes: (r) => { fs.writeFileSync(path.join(app.getPath("userData"), "options.json"), JSON.stringify(r, null, 1)); return true; },
+  importRecipes: () => {
+    const f = dialog.showOpenDialogSync(win, { filters: [{ name: "Options G&L Diag", extensions: ["json"] }] });
+    if (!f) return null;
+    const data = JSON.parse(fs.readFileSync(f[0], "utf8"));
+    if (!Array.isArray(data)) throw new Error("Fichier d'options invalide.");
+    return data;
+  },
   backup: (entry) => {
     const dir = path.join(app.getPath("documents"), "G&L Diag", "Sauvegardes");
     fs.mkdirSync(dir, { recursive: true });

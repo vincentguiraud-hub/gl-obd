@@ -92,6 +92,7 @@ class Elm {
   }
 
   async reset() {
+    this.rawMode = false; this.cafOff = false;
     // Réveil : certains clones ignorent le premier caractère
     try { await this.send("", 1500); } catch {}
     let id = "";
@@ -261,7 +262,11 @@ class Elm {
 
   // Espion du bus : trames brutes reçues pendant « ms » millisecondes (erreurs tolérées)
   async sniff(ms) {
-    const raw = await this.send("ATMA", 3000, ms);
+    // formatage automatique coupé : on veut les 8 octets bruts de chaque trame
+    if (!this.cafOff) { await this.at("ATCAF0"); this.cafOff = true; }
+    let raw;
+    try { raw = await this.send("ATMA", 3000, ms); }
+    finally { if (!this.rawMode) { try { await this.at("ATCAF1"); } catch {} this.cafOff = false; } }
     const out = [];
     for (const l of raw.split(/[\r\n]+/)) {
       const t = l.trim().toUpperCase().split(/\s+/);

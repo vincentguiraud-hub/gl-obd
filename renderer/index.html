@@ -14,13 +14,15 @@
   </div>
   <nav id="nav">
     <a data-page="connexion" class="active"><i>⚡</i>Connexion</a>
-    <a data-page="defauts"><i>⚠</i><span id="navDtc">Défauts moteur (OBD)</span></a>
-    <a data-page="vag"><i>▦</i><span id="navVag">Calculateurs</span></a>
-    <a data-page="atelier"><i>⚙</i>Atelier calculateur</a>
-    <a data-page="live"><i>◔</i>Données en direct</a>
-    <a data-page="ct" class="carOnly"><i>✓</i>Préparation CT</a>
-    <a data-page="freeze" class="carOnly"><i>❄</i>Arrêt sur image</a>
-    <a data-page="obdplus" class="carOnly"><i>≡</i>Tests antipollution détaillés</a>
+    <a data-page="defauts" class="notTesla"><i>⚠</i><span id="navDtc">Défauts moteur (OBD)</span></a>
+    <a data-page="vag" class="notTesla"><i>▦</i><span id="navVag">Calculateurs</span></a>
+    <a data-page="atelier" class="notTesla"><i>⚙</i>Atelier calculateur</a>
+    <a data-page="live" class="notTesla"><i>◔</i>Données en direct</a>
+    <a data-page="ct" class="carOnly notTesla"><i>✓</i>Préparation CT</a>
+    <a data-page="freeze" class="carOnly notTesla"><i>❄</i>Arrêt sur image</a>
+    <a data-page="obdplus" class="carOnly notTesla"><i>≡</i>Tests antipollution détaillés</a>
+    <a data-page="tesla" class="teslaOnly"><i>⚡</i>Tesla – batterie &amp; véhicule</a>
+    <a data-page="options"><i>★</i>Options cachées</a>
     <a data-page="sniff"><i>≈</i>Espion bus CAN</a>
     <a data-page="rapports"><i>▤</i>Rapports &amp; historique</a>
     <a data-page="terminal"><i>›_</i>Terminal ELM327</a>
@@ -45,6 +47,7 @@
         <div class="choices" id="vehTypes">
           <label class="choice"><input type="radio" name="vtype" value="car" checked><b>Voiture / utilitaire</b><small>Toutes marques 2001 → 2026, dont VW, Audi, Seat, Škoda, Cupra, MAN TGE</small></label>
           <label class="choice"><input type="radio" name="vtype" value="truck"><b>Poids lourd / bus</b><small>MAN TGL, TGM, TGS, TGX, Lion's… (J1939, 24 V)</small></label>
+          <label class="choice"><input type="radio" name="vtype" value="tesla"><b>Tesla</b><small>Model 3 / Model Y (câble adaptateur diagnostic Tesla)</small></label>
         </div>
         <p class="alert hidden" id="truckWarn">⚠ Camion en <b>24 V</b> : utilise un adaptateur prévu pour le 12/24 V et compatible <b>J1939</b> (ex. OBDLink MX+, Vgate vLinker FS/MS, ELM327 v2.x « 24V »). Un petit ELM327 12 V peut griller.</p>
         <h2 class="mt">2. Type d'adaptateur ELM327</h2>
@@ -186,6 +189,26 @@
     </div>
   </section>
 
+  <!-- TESLA -->
+  <section class="page hidden" id="page-tesla">
+    <div class="row between"><h1>Tesla – batterie &amp; véhicule</h1><div class="row"><span class="muted" id="teslaRate"></span><button class="btn primary" id="teslaBtn">▶ Lire en continu</button></div></div>
+    <p class="muted">Données lues en direct sur le bus du véhicule : batterie haute tension (charge, santé, tension de chaque groupe de cellules, températures), énergie chargée/consommée depuis la sortie d'usine, moteurs, vitesse… Décodage basé sur le fichier communautaire « model3dbc » (Model 3 / Model Y).</p>
+    <div id="teslaTiles" class="tiles"></div>
+    <div class="row between mt"><h2 style="margin:0">Toutes les trames décodées</h2><div class="row"><input id="teslaFilter" placeholder="Filtrer (ex. BMS, temp, door…)" style="width:280px"><button class="btn ghost" id="teslaAllBtn">Tout lire (2 s)</button></div></div>
+    <div id="teslaAll"></div>
+  </section>
+
+  <!-- OPTIONS -->
+  <section class="page hidden" id="page-options">
+    <div class="row between"><h1>Options cachées</h1><div class="row"><button class="btn ghost" id="optImport">Importer</button><button class="btn ghost" id="optExport">Exporter</button><button class="btn primary" id="optAdd">+ Ajouter une option</button></div></div>
+    <p class="muted" id="optNote">Active ou désactive des fonctions en modifiant le codage ou une adaptation d'un calculateur. Chaque option est une « recette » : calculateur, octet, bit, valeur. Le logiciel lit l'état actuel, montre la modification, fait une sauvegarde puis écrit. Tu peux ajouter les recettes trouvées sur les forums (spécifiques à ta référence de calculateur) et tout restaurer en un clic.</p>
+    <div id="optTesla" class="alert hidden">Tesla : les fonctions payantes (accélération, conduite autonome, chauffage arrière…) sont verrouillées par Tesla sur ses serveurs et liées au compte. Elles ne peuvent pas être débloquées avec un outil OBD, et les contourner serait illégal. Seuls les réglages proposés par Tesla à l'écran (menu Service) sont accessibles.</div>
+    <div id="optList"></div>
+    <h2 class="mt">Sauvegardes et restauration</h2>
+    <p class="muted">Chaque écriture (codage, adaptation, option) est sauvegardée avant modification. Restaurer remet la valeur d'origine dans le calculateur.</p>
+    <div id="bkList"></div>
+  </section>
+
   <!-- OBD+ -->
   <section class="page hidden" id="page-obdplus">
     <div class="row between"><h1>Tests antipollution détaillés</h1><button class="btn primary" id="obdPlusBtn">Lire</button></div>
@@ -269,5 +292,6 @@
 <script src="report.js"></script>
 <script src="app.js"></script>
 <script src="atelier.js"></script>
+<script src="tesla.js"></script>
 </body>
 </html>

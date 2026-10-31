@@ -161,7 +161,7 @@ async function writeWithBackup(did, name, oldB, newB, login, btn, after) {
     <ul><li>Contact mis, moteur arrêté, batterie en bon état (chargeur conseillé).</li><li>Ne débranche pas l'adaptateur pendant l'écriture.</li><li>Une sauvegarde de la valeur actuelle est faite automatiquement.</li></ul>`, "Écrire");
   if (!ok) return;
   await busy(btn, async () => {
-    const file = await diag.backup({ date: new Date().toISOString(), vin: S.info?.vin, module: `${A.mod.addr} ${A.mod.name}`, part: modKey(), did, before: bytesHex(oldB), after: bytesHex(newB) });
+    const file = await diag.backup({ date: new Date().toISOString(), vin: S.info?.vin, addr: A.mod.addr, module: `${A.mod.addr} ${A.mod.name}`, part: modKey(), did, login: login || undefined, before: bytesHex(oldB), after: bytesHex(newB) });
     await at("writeDid", did, newB, login ? { login } : {});
     toast("Écriture réussie ✓ (sauvegarde : " + file.split(/[\\/]/).pop() + ")");
     if (after) await after();

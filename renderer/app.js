@@ -76,16 +76,20 @@ const HELP = {
 const ctype = () => $("input[name=ctype]:checked").value;
 const vtype = () => $("input[name=vtype]:checked").value;
 function showType() {
-  const t = ctype(), truck = vtype() === "truck";
+  const t = ctype(), truck = vtype() === "truck", tesla = vtype() === "tesla";
   $("#truckWarn").classList.toggle("hidden", !truck);
-  $("#demoText").textContent = truck ? "Simule un camion MAN TGX 2019 (J1939) avec quelques défauts AdBlue / FAP, pour découvrir le logiciel." : "Simule un VW Crafter 2019 2.0 TDI avec quelques défauts, pour découvrir le logiciel.";
+  $("#demoText").textContent = tesla ? "Simule une Tesla Model Y (bus véhicule) : batterie, cellules, énergie, moteurs." : truck ? "Simule un camion MAN TGX 2019 (J1939) avec quelques défauts AdBlue / FAP, pour découvrir le logiciel." : "Simule un VW Crafter 2019 2.0 TDI avec quelques défauts, pour découvrir le logiciel.";
   store.set("vtype", vtype());
   ["serial", "wifi", "ble", "demo"].forEach((k) => $("#opt-" + k).classList.toggle("hidden", k !== t));
   $("#helpBox").innerHTML = HELP[t] + (truck ? `<h2 class="mt">Poids lourd MAN</h2><ol>
     <li>La prise diagnostic se trouve dans la cabine (côté passager, près de la boîte à fusibles / ZE).</li>
     <li>Adaptateur <b>12/24 V</b> et <b>J1939</b> obligatoire.</li>
     <li>Le logiciel cherche le bus à 250 puis 500 kbit/s : contact mis, attends quelques secondes.</li>
-    <li>Le MAN TGE (utilitaire) se diagnostique en « Voiture / utilitaire », c'est un Crafter.</li></ol>` : "") + `<p class="muted mt">Compatible avec les adaptateurs ELM327 v1.4b / v1.5 / v2.x et équivalents (Vgate, Veepeak, OBDLink, Konnwei…). Toutes marques en OBD générique ; diagnostic constructeur pour le groupe VW.</p>`;
+    <li>Le MAN TGE (utilitaire) se diagnostique en « Voiture / utilitaire », c'est un Crafter.</li></ol>` : "") + (tesla ? `<h2 class="mt">Tesla Model 3 / Model Y</h2><ol>
+    <li>Les Tesla n'ont pas de prise OBD standard : il faut un <b>câble adaptateur diagnostic Tesla → OBD</b> adapté à ton modèle et à son année (vendu environ 20 à 40 €).</li>
+    <li>Le connecteur de diagnostic se trouve dans l'habitacle (selon les versions : sous la console centrale arrière ou derrière un cache) ; suis la notice du câble.</li>
+    <li>Branche l'ELM327 sur le câble, <b>réveille la voiture</b> (ouvre une porte ou allume l'écran) puis connecte-toi.</li>
+    <li>Lecture seule : on écoute le bus, rien n'est modifié dans la voiture.</li></ol>` : "") + `<p class="muted mt">Compatible avec les adaptateurs ELM327 v1.4b / v1.5 / v2.x et équivalents (Vgate, Veepeak, OBDLink, Konnwei…). Toutes marques en OBD générique ; diagnostic constructeur pour le groupe VW.</p>`;
   store.set("ctype", t);
 }
 $$("input[name=ctype], input[name=vtype]").forEach((r) => (r.onchange = showType));
@@ -198,6 +202,7 @@ function onConnected(info) {
   if (!S.info || S.info.vin !== info.vin || !!S.info.truck !== !!info.truck) newSession();
   S.info = info;
   document.body.classList.toggle("truck", !!info.truck);
+  document.body.classList.toggle("tesla", !!info.tesla);
   selPids = new Set(store.get(info.truck ? "pidsTruck" : "pids", presets().moteur));
   $("#navVag").textContent = info.truck ? "Calculateurs camion" : info.vag ? "Calculateurs VW / Audi" : "Calculateurs";
   $("#vagTitle").textContent = info.truck ? "Calculateurs poids lourd (MAN et autres camions J1939)" : info.vag ? "Calculateurs VW · Audi · Seat · Škoda · Cupra · MAN TGE" : `Calculateurs ${info.brand || ""}`;
@@ -206,20 +211,21 @@ function onConnected(info) {
   $("#dtcNote").textContent = info.truck ? "Défauts envoyés par tous les calculateurs du camion (norme J1939 : SPN = élément concerné, FMI = type de panne). Le détail par calculateur est dans « Calculateurs camion »." : "Codes génériques lus sur toutes les marques (norme OBD-II). Pour les autres calculateurs (ABS, airbag, tableau de bord…), va dans « Calculateurs ».";
   if (typeof A !== "undefined") A.mod = null;
   initModules();
-  const title = [info.brand || "Véhicule", info.year].filter(Boolean).join(" ");
+  const title = [info.brand || "Véhicule", info.model, info.year].filter(Boolean).join(" ");
   $("#vehSummary").innerHTML = `${esc(title)}<small>${esc(info.vin || "VIN non communiqué")}${info.demo ? " · DÉMO" : ""}</small>`;
   setVolt(info.voltage);
   $("#vehCard").classList.remove("hidden");
   $("#vehKv").innerHTML = [
     ["Marque", info.brand || "Inconnue"], ["Année modèle", info.year || "—"], ["N° de série (VIN)", info.vin || "Non communiqué"],
     ["Tension batterie", info.voltage ? fmt(info.voltage, 1) + " V" : "—"], ["Protocole", info.protocolName], ["Adaptateur", info.adapter || "ELM327"],
-    ...(info.truck ? [["Type", "Poids lourd / bus (24 V)"]] : [["Calculateurs OBD", Object.values(info.ecus || {}).join(", ") || "Moteur"],
+    ...(info.tesla ? [["Type", "Tesla – lecture du bus véhicule"], ["Diagnostic", "Batterie, cellules, énergie, moteurs (page Tesla)"]] : info.truck ? [["Type", "Poids lourd / bus (24 V)"]] : [["Calculateurs OBD", Object.values(info.ecus || {}).join(", ") || "Moteur"],
     ["Diagnostic tous calculateurs", info.vagCapable ? (info.vag ? "Disponible (groupe VW)" : "Possible (recherche étendue)") : "Non (véhicule non CAN, avant ~2008)"]]),
   ].map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
   $("#vagNote").classList.toggle("bad", !info.vagCapable);
   renderVagTable();
   if (info.truck) $("#vagNote").textContent = "Identification et défauts de chaque calculateur du camion (moteur EDC, boîte TipMatic, EBS, Intarder, ECAS, AdBlue/SCR…) par UDS sur CAN 29 bits. Lance « Recherche étendue » pour trouver tous les calculateurs présents.";
   else if (!info.vag) $("#vagNote").textContent = `${info.brand || "Ce véhicule"} : le moteur et la boîte sont listés ci-dessous. Lance « Recherche étendue » pour trouver tous les autres calculateurs (ABS, airbag, BCM…). Les noms exacts dépendent du constructeur.`;
+  $("#fullScanBtn").textContent = info.tesla ? "▶ Voir la batterie et le véhicule" : "▶ Diagnostic complet";
   go("connexion");
   toast("Connecté à " + title);
 }
@@ -232,7 +238,7 @@ function setVolt(v) {
 setInterval(async () => { if (S.connected && !S.live && !S.working) { try { setVolt(await diag.voltage()); } catch {} } }, 20000);
 
 // ---------- diagnostic complet ----------
-$("#fullScanBtn").onclick = () => busy($("#fullScanBtn"), async () => {
+$("#fullScanBtn").onclick = () => S.info?.tesla ? go("tesla") : busy($("#fullScanBtn"), async () => {
   S.working = true;
   const prog = $("#fullProg"); prog.classList.remove("hidden");
   const step = (p, t) => { prog.firstElementChild.style.width = Math.round(p * 100) + "%"; prog.lastElementChild.textContent = t; };

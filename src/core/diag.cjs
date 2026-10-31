@@ -9,6 +9,8 @@ const { SimTransport } = require("./sim.cjs");
 const { SimTruckTransport } = require("./simtruck.cjs");
 const { Hd, TRUCK_MODULES } = require("./hd.cjs");
 const { Uds } = require("./uds.cjs");
+const { Tesla } = require("./tesla.cjs");
+const { SimTeslaTransport } = require("./simtesla.cjs");
 
 class Diag extends EventEmitter {
   constructor() {
@@ -36,7 +38,7 @@ class Diag extends EventEmitter {
     if (opts.type === "wifi") t = new TcpTransport(opts.host || "192.168.0.10", Number(opts.port) || 35000);
     else if (opts.type === "serial") t = new SerialTransport(opts.path, Number(opts.baud) || 38400);
     else if (opts.type === "ble") t = new BridgeTransport(bridgeSend);
-    else t = opts.vehicle === "truck" ? new SimTruckTransport() : new SimTransport();
+    else t = opts.vehicle === "truck" ? new SimTruckTransport() : opts.vehicle === "tesla" ? new SimTeslaTransport() : new SimTransport();
     const truck = opts.vehicle === "truck";
     this.emit("status", { state: "connecting", text: "Connexion à l'adaptateur…" });
     await t.open();
@@ -51,11 +53,12 @@ class Diag extends EventEmitter {
       this.vag = new Vag(elm);
       this.hd = new Hd(elm);
       this.uds = new Uds(elm, (m, quick) => (this.mode === "truck" ? this.hd.open(m.sa, quick) : this.vag.open(m, quick)));
-      this.mode = truck ? "truck" : "car";
-      const r = truck ? await this.hd.init() : await elm.init();
+      this.tesla = new Tesla(elm);
+      this.mode = truck ? "truck" : opts.vehicle === "tesla" ? "tesla" : "car";
+      const r = truck ? await this.hd.init() : this.mode === "tesla" ? await this.tesla.init() : await elm.init();
       this.elm = elm;
       this.emit("status", { state: "connecting", text: "Lecture du véhicule…" });
-      this.info = truck ? await this.readTruck(r, opts.type === "demo" || !opts.type) : await this.readVehicle(r, opts.type === "demo" || !opts.type);
+      this.info = this.mode === "tesla" ? await this.readTesla(r, opts.type === "demo" || !opts.type) : truck ? await this.readTruck(r, opts.type === "demo" || !opts.type) : await this.readVehicle(r, opts.type === "demo" || !opts.type);
       this.emit("status", { state: "connected", text: "Connecté", info: this.info });
       return this.info;
     } catch (e) {
@@ -86,6 +89,18 @@ class Diag extends EventEmitter {
     };
   }
 
+  async readTesla(r, demo) {
+    let vin = null, voltage = null;
+    try { vin = await this.tesla.readVin(); } catch {}
+    try { voltage = await this.elm.voltage(); } catch {}
+    const dec = decodeVin(vin);
+    return { demo, tesla: true, adapter: r.version, protocol: r.protocol, protocolName: r.protocolName, isCan: true, vin, voltage, ecus: {},
+      brand: "Tesla", model: vin && vin[3] === "Y" ? "Model Y" : vin && vin[3] === "3" ? "Model 3" : null, year: dec.year, vag: false, vagCapable: false };
+  }
+  teslaPoll() { return this.run(async () => { this.need(); this.needTesla(); return this.tesla.poll(); }); }
+  teslaAll(ms = 1500) { return this.run(async () => { this.need(); this.needTesla(); await this.tesla.sniffAll(ms); return this.tesla.all(); }); }
+  needTesla() { if (this.mode !== "tesla") throw new Error("Fonction réservée aux Tesla."); }
+
   async readTruck(r, demo) {
     let vin = null, voltage = null;
     try { vin = await this.hd.vin(); } catch {}
@@ -110,14 +125,15 @@ class Diag extends EventEmitter {
 
   voltage() { return this.run(async () => { this.need(); return this.elm.voltage(); }); }
   get truck() { return this.mode === "truck"; }
-  readDtcs() { return this.run(async () => { this.need(); await this.leaveVag(); return this.truck ? this.hd.readDtcs() : this.obd.readAllDtcs(); }); }
-  clearDtcs() { return this.run(async () => { this.need(); await this.leaveVag(); return this.truck ? this.hd.clearDtcs() : this.obd.clearDtcs(); }); }
-  readiness() { return this.run(async () => { this.need(); if (this.truck) throw new Error("Non disponible sur poids lourd."); await this.leaveVag(); return this.obd.readiness(); }); }
-  freezeFrame() { return this.run(async () => { this.need(); if (this.truck) throw new Error("Non disponible sur poids lourd."); await this.leaveVag(); return this.obd.freezeFrame(); }); }
+  noTesla() { if (this.mode === "tesla") throw new Error("Tesla ne donne pas accès à ses défauts et calculateurs avec un outil du commerce : utilise la page « Tesla » (lecture du bus) ou l'écran de la voiture (menu Service)."); }
+  readDtcs() { return this.run(async () => { this.need(); this.noTesla(); await this.leaveVag(); return this.truck ? this.hd.readDtcs() : this.obd.readAllDtcs(); }); }
+  clearDtcs() { return this.run(async () => { this.need(); this.noTesla(); await this.leaveVag(); return this.truck ? this.hd.clearDtcs() : this.obd.clearDtcs(); }); }
+  readiness() { return this.run(async () => { this.need(); this.noTesla(); if (this.truck) throw new Error("Non disponible sur poids lourd."); await this.leaveVag(); return this.obd.readiness(); }); }
+  freezeFrame() { return this.run(async () => { this.need(); this.noTesla(); if (this.truck) throw new Error("Non disponible sur poids lourd."); await this.leaveVag(); return this.obd.freezeFrame(); }); }
 
   supportedPids() {
     return this.run(async () => {
-      this.need(); await this.leaveVag();
+      this.need(); this.noTesla(); await this.leaveVag();
       if (this.truck) return this.hd.params();
       const list = await this.obd.supportedPids();
       return list.filter((p) => PIDS[p]).map((p) => ({ pid: p, name: PIDS[p].name, unit: PIDS[p].unit, min: PIDS[p].min ?? 0, max: PIDS[p].max ?? null, dec: PIDS[p].dec ?? (["°C", "%", "kPa"].includes(PIDS[p].unit) ? 0 : 1) }));
@@ -146,7 +162,7 @@ class Diag extends EventEmitter {
     const ops = ["identification", "dtcDetails", "allDtcs", "readCoding", "session", "login", "writeDid", "scanDids", "readMany", "routine", "reset", "raw", "did"];
     if (!ops.includes(op)) throw new Error("Opération inconnue");
     return this.run(async () => {
-      this.need(); this.inVag = true;
+      this.need(); this.noTesla(); this.inVag = true;
       if (op === "did") { const b = await this.uds.did(m, args[0]); return b ? require("./uds.cjs").interpret(b) : null; }
       if (op === "readCoding") return this.uds.readCoding(m);
       return this.uds[op](m, ...args);
@@ -158,13 +174,14 @@ class Diag extends EventEmitter {
     return this.run(async () => { this.need(); this.inVag = true; return this.uds.scanDids(m, from, to, onProgress, () => this.scanCancelled); });
   }
 
-  mode06() { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.mode06(); }); }
-  mode09() { return this.run(async () => { this.need(); await this.leaveVag(); return this.obd.mode09(); }); }
+  mode06() { return this.run(async () => { this.need(); this.noTesla(); await this.leaveVag(); return this.obd.mode06(); }); }
+  mode09() { return this.run(async () => { this.need(); this.noTesla(); await this.leaveVag(); return this.obd.mode09(); }); }
 
   // Espion du bus CAN : écoute pendant « ms »
   sniff(ms = 1000) {
     return this.run(async () => {
       this.need();
+      if (this.mode === "tesla") { await this.elm.at("ATCRA"); return this.elm.sniff(ms); }
       if (this.inVag && !this.truck) { await this.vag.done(); this.inVag = false; }
       if (this.truck) { await this.hd.j1939(); try { await this.elm.at("ATCRA"); } catch {} }
       return this.elm.sniff(ms);

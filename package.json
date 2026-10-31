@@ -1,13 +1,13 @@
 {
   "name": "gl-obd",
   "productName": "G&L Diag",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "G&L Diag – logiciel de diagnostic OBD (ELM327) pour VW, Audi, Seat, Škoda, MAN et toutes marques",
   "author": "G&L Créations",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node test/core.test.cjs && node test/truck.test.cjs && node test/atelier.test.cjs",
+    "test": "node test/core.test.cjs && node test/truck.test.cjs && node test/atelier.test.cjs && node test/tesla.test.cjs",
     "dist": "electron-builder --win nsis --x64"
   },
   "dependencies": {
@@ -21,11 +21,41 @@
   "build": {
     "appId": "fr.glcreations.diag",
     "productName": "G&L Diag",
-    "files": ["main.cjs", "preload.cjs", "src/**/*", "renderer/**/*", "build/icon.png", "package.json"],
-    "directories": { "output": "dist", "buildResources": "build" },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "src/**/*",
+      "renderer/**/*",
+      "build/icon.png",
+      "package.json",
+      "data/**/*"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
     "npmRebuild": false,
-    "win": { "target": "nsis", "icon": "build/icon.png" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "createDesktopShortcut": true, "createStartMenuShortcut": true, "shortcutName": "G&L Diag", "artifactName": "GL-Diag-Setup.${ext}", "installerIcon": "build/icon.ico", "uninstallerIcon": "build/icon.ico" },
-    "publish": [{ "provider": "github", "owner": "vincentguiraud-hub", "repo": "gl-obd", "releaseType": "release" }]
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "G&L Diag",
+      "artifactName": "GL-Diag-Setup.${ext}",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "vincentguiraud-hub",
+        "repo": "gl-obd",
+        "releaseType": "release"
+      }
+    ]
   }
 }
