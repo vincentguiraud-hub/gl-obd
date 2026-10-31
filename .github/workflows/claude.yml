@@ -53,15 +53,26 @@ jobs:
              contournement de fonctions payantes, etc.), explique pourquoi et propose une alternative.
           N'écris rien dans package.json pour la version et ne touche pas à .github/.
           PROMPT
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "⚠️ La clé CLAUDE_CODE_OAUTH_TOKEN est absente des secrets GitHub du dépôt : je ne peux pas travailler." > /tmp/demande/reponse.md
+            touch /tmp/demande/echec; exit 0
+          fi
+          claude --version
           claude -p "$(cat /tmp/demande/prompt.txt)" \
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(npm test),Bash(npm run:*),Bash(npm install:*),Bash(node:*),Bash(ls:*),Bash(cat:*),Bash(grep:*),Bash(find:*),Bash(git diff:*),Bash(git status:*)" \
-            --max-turns 80 > /tmp/demande/reponse.md || echo "Je n'ai pas pu terminer cette demande (erreur pendant le travail). Réessaie en reformulant, ou écris-moi directement dans Claude." > /tmp/demande/reponse.md
+            --max-turns 80 > /tmp/demande/reponse.md 2> /tmp/demande/erreur.txt || {
+              touch /tmp/demande/echec
+              { echo "Je n'ai pas pu terminer cette demande (erreur pendant le travail) : rien n'a été publié."; echo; echo "<details><summary>Détail de l'erreur</summary>"; echo; echo '```'; tail -c 2500 /tmp/demande/erreur.txt; tail -c 1000 /tmp/demande/reponse.md; echo '```'; echo "</details>"; } > /tmp/demande/r.md
+              mv /tmp/demande/r.md /tmp/demande/reponse.md; }
           cat /tmp/demande/reponse.md
       - name: Vérifier et publier
         run: |
           git config user.name "Claude (G&L Diag)"
           git config user.email "noreply@anthropic.com"
-          if git diff --quiet; then
+          # le fichier de verrouillage des dépendances n'est pas une modification demandée
+          git checkout -- package-lock.json 2>/dev/null || true
+          if [ -f /tmp/demande/echec ] || [ -z "$(git status --porcelain)" ]; then
+            git checkout -- . 2>/dev/null || true; git clean -fdq 2>/dev/null || true
             gh issue comment "$ISSUE" --body-file /tmp/demande/reponse.md
             exit 0
           fi
