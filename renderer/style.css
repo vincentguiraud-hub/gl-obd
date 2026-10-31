@@ -186,3 +186,7 @@ body.tesla .notTesla { display: none !important; }
 .sigtbl td { padding: 4px 10px; font-size: 12.5px; }
 details.msg { background: #fff; border: 1px solid var(--line); border-radius: 10px; margin-top: 8px; }
 details.msg summary { padding: 9px 14px; cursor: pointer; font-weight: 600; }
+.side-ask { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.side-ask .btn { width: 100%; font-size: 13px; }
+.side-ask a { color: #9aa6b6; font-size: 12px; text-align: center; cursor: pointer; }
+.side-ask a:hover { color: #fff; }

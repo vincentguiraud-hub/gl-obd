@@ -559,3 +559,23 @@ diag.on("update", (u) => {
   if (u.state === "ready") { b.textContent = `Mise à jour ${u.version} prête – cliquer pour redémarrer`; b.onclick = () => diag.installUpdate(); }
   else { b.textContent = `Téléchargement de la mise à jour ${u.version}…`; b.onclick = null; }
 });
+
+// ---------- demande de modification (Claude) ----------
+$("#askList").onclick = () => diag.openRequests();
+$("#askBtn").onclick = async () => {
+  const page = ($$("#nav a").find((a) => a.classList.contains("active")) || {}).textContent || "";
+  const res = await modal("Demander une modification", `<p>Décris le problème ou ce que tu veux ajouter. Claude fera la modification et publiera la mise à jour.</p>
+    <label>Titre <input id="askTitle" placeholder="ex. Ajouter la lecture du kilométrage du Crafter"></label>
+    <label>Détails <textarea id="askText" rows="6" placeholder="Ce qui se passe, ce que tu attendais, sur quel véhicule…"></textarea></label>
+    <p class="muted small">Une page GitHub va s'ouvrir avec ta demande déjà remplie. Une capture de la fenêtre est copiée : colle-la avec <b>Ctrl+V</b> dans la page, puis clique sur <b>Create</b>. La réponse de Claude arrive sur cette page (lien « Mes demandes »).</p>`,
+    [{ label: "Annuler", value: null }, { label: "Préparer la demande", value: "ok", cls: "primary" }]);
+  if (!res) return;
+  const title = $("#askTitle").value.trim(), text = $("#askText").value.trim();
+  if (!title && !text) return;
+  const logs = [...$("#termOut").children].slice(-40).map((d) => d.textContent).join("\n");
+  const i = S.info || {};
+  const context = [`Version : ${await diag.appVersion()}`, `Page : ${page.trim()}`, `Véhicule : ${[i.brand, i.model, i.year].filter(Boolean).join(" ") || "non connecté"} ${i.vin || ""}${i.demo ? " (démo)" : ""}`,
+    `Adaptateur : ${i.adapter || "—"} · ${i.protocolName || ""}`, "", "Journal :", logs].join("\n");
+  const shot = await diag.requestChange({ title: title || text.slice(0, 70), text: text || title, context });
+  toast(shot ? "Page GitHub ouverte : colle la capture avec Ctrl+V puis clique sur Create." : "Page GitHub ouverte : clique sur Create pour envoyer.");
+};

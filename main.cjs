@@ -1,6 +1,6 @@
 // G&L Diag – processus principal Electron
 "use strict";
-const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, Menu, clipboard } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { Diag } = require("./src/core/diag.cjs");
@@ -118,6 +118,16 @@ const api = {
     fs.writeFileSync(target, "﻿" + text, "utf8");
     return target;
   },
+  // Demande de modification envoyée à Claude via GitHub (une « issue »)
+  requestChange: async ({ title, text, context }) => {
+    let shot = false;
+    try { const img = await win.webContents.capturePage(); clipboard.writeImage(img); shot = true; } catch {}
+    const body = `${text}\n\n${shot ? "📸 _Capture d'écran : colle-la ici avec Ctrl+V_\n\n" : ""}<details><summary>Informations techniques</summary>\n\n\`\`\`\n${String(context).slice(-3000)}\n\`\`\`\n</details>`;
+    const url = "https://github.com/vincentguiraud-hub/gl-obd/issues/new?title=" + encodeURIComponent(title) + "&body=" + encodeURIComponent(body);
+    shell.openExternal(url);
+    return shot;
+  },
+  openRequests: () => shell.openExternal("https://github.com/vincentguiraud-hub/gl-obd/issues?q=is%3Aissue"),
   openExternal: (url) => { if (/^https:\/\//.test(url)) shell.openExternal(url); },
   appVersion: () => app.getVersion(),
   installUpdate: () => { const { autoUpdater } = require("electron-updater"); autoUpdater.quitAndInstall(); },
