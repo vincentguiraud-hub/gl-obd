@@ -187,19 +187,45 @@ class Uds {
   async scanDids(m, from, to, onProgress = () => {}, isCancelled = () => false) {
     const found = [];
     await this.open(m, true);
-    for (let d = from; d <= to; d++) {
+    const total = to - from + 1;
+    const single = async (did) => {
+      try {
+        const r = await this.elm.uds("22" + did, 1500);
+        if (r && r[0] === 0x62) found.push({ did, name: DID_NAMES[did] || null, ...interpret(r.slice(3)) });
+      } catch (e) { if (e.nrc === undefined) await this.open(m, true); }
+    };
+    // 3 numéros par requête : la plupart n'existent pas et sont refusés d'un coup (3 fois plus rapide)
+    let multi = this.multiOk !== false;
+    for (let d = from; d <= to; d += multi ? 3 : 1) {
       if (isCancelled()) break;
-      if ((d & 0x0f) === 0) onProgress((d - from) / (to - from + 1), h4(d), found.length);
-      const did = h4(d);
-      let r = null;
-      try { r = await this.elm.uds("22" + did, 1500); } catch (e) { if (e.nrc === undefined) { await this.open(m, true); } continue; }
-      if (r && r[0] === 0x62) {
-        const b = r.slice(3);
-        found.push({ did, name: DID_NAMES[did] || null, ...interpret(b) });
-      }
+      if ((d - from) % 48 < (multi ? 3 : 1)) onProgress((d - from) / total, h4(d), found.length);
+      if (!multi) { await single(h4(d)); continue; }
+      const group = [d, d + 1, d + 2].filter((x) => x <= to).map(h4);
+      let r = null, nrc = null;
+      try { r = await this.elm.uds("22" + group.join(""), 1500); }
+      catch (e) { nrc = e.nrc; if (nrc === undefined) await this.open(m, true); }
+      if (nrc === 0x13 || nrc === 0x12) { this.multiOk = false; multi = false; for (const g of group) await single(g); continue; }
+      if (r && r[0] === 0x62) for (const g of group) await single(g); // au moins un existe : on les relit un par un
     }
     onProgress(1, "", found.length);
     return found;
+  }
+
+  // Recherche des valeurs qui ressemblent au kilométrage indiqué (plusieurs échelles possibles)
+  static mileageMatches(values, ref) {
+    const out = [];
+    for (const v of values) {
+      for (const k of ["u16", "u24", "u32"]) {
+        if (v[k] === undefined) continue;
+        for (const [scale, label] of [[1, "km"], [0.1, "× 0,1 km"], [10, "× 10 km"], [0.01, "× 0,01 km"], [1.609344, "miles"]]) {
+          const km = v[k] * scale;
+          if (km < 100) continue;
+          const diff = km - ref;
+          if (Math.abs(diff) <= Math.max(ref * 0.02, 300)) out.push({ did: v.did, raw: v.hex, km: Math.round(km), scale, label, diff: Math.round(diff) });
+        }
+      }
+    }
+    return out;
   }
 
   // Lecture rapide de plusieurs valeurs (jusqu'à 3 par requête si on connaît leurs longueurs)

@@ -19,7 +19,7 @@ function makeModules(sim) {
       dids: {
         "1001": () => u16(Math.round(live().rpm)), "1002": () => [Math.round(live().cool + 40)], "1003": () => u16(Math.round((1000 + live().speed * 12))),
         "1004": () => u16(Math.round(300 + live().rpm * 0.4)), "1005": () => [62], "1006": () => u16(rnd(1180, 1220)), "1007": () => u16(14842),
-        "100C": [0x00, 0x2a, 0x13, 0x88], "2032": [0x00, 0x00, 0x4b], "295A": [0x01, 0x6a, 0x5e, 0x40], "02BD": [0x05],
+        "100C": [0x00, 0x2a, 0x13, 0x88], "2032": [0x00, 0x00, 0x4b], "295A": [0x00, 0x16, 0xa5, 0x9a], "02BD": [0x05],
       },
       writable: ["1005"],
       routines: { "0183": { 1: [0x00], 3: [0x02, 0x41] } },
@@ -31,7 +31,7 @@ function makeModules(sim) {
     }) },
     0x713: { resp: 0x77d, ecu: new FakeEcu({ ids: { F197: "ESC", F187: "2N0907379H", F189: "0280", F191: "2N0614517A", F1A3: "H09", F18C: "TRW1234567" }, coding: [0x00, 0x34, 0x12, 0x80, 0x00, 0x11, 0x08], dtcs: [[0x40, 0x35, 0x1c, 0x2c]], snap: { "64,53,28": { snapshot: [0x01, 0x01, 0x10, 0x03, 0x00, 0x00], extended: [0x01, 0x01] } } }) },
     0x715: { resp: 0x77f, ecu: new FakeEcu({ ids: { F197: "Airbag VW8R", F187: "2N0959655B", F189: "0812", F1A3: "H05" }, coding: [0x00, 0x00, 0x10, 0x24, 0x00, 0x00], dtcs: [] }) },
-    0x714: { resp: 0x77e, ecu: new FakeEcu({ ids: { F197: "KOMBI", F187: "7C0920740B", F189: "0211", F1A3: "H12" }, coding: [0x22, 0x0b, 0x00, 0x80, 0x00, 0x02], dids: { "2203": [0x02, 0x43, 0xb6, 0xd2] }, dtcs: [[0xc1, 0x21, 0x00, 0x09]] }) },
+    0x714: { resp: 0x77e, ecu: new FakeEcu({ ids: { F197: "KOMBI", F187: "7C0920740B", F189: "0211", F1A3: "H12" }, coding: [0x22, 0x0b, 0x00, 0x80, 0x00, 0x02], dids: { "2203": [0x02, 0x43, 0xc5], "2210": [0x00, 0x2a] }, dtcs: [[0xc1, 0x21, 0x00, 0x09]] }) },
     0x710: { resp: 0x77a, ecu: new FakeEcu({ ids: { F197: "Gateway MQB-B", F187: "2Q0907530AA", F189: "2228", F1A3: "H14" }, coding: [0x01, 0x00, 0x7f, 0xff, 0xa3, 0x00, 0x10, 0x00], dtcs: [] }) },
     0x70e: { resp: 0x778, ecu: new FakeEcu({ ids: { F197: "BCM MQB-B High", F187: "7C0937084", F189: "0105", F1A3: "H22" }, coding: Array.from({ length: 30 }, (_, i) => [0x2d, 0x1a, 0x02, 0x00, 0x80, 0x48][i % 6]), loginCode: 31347, needsExtended: true, dtcs: [[0x90, 0x52, 0x13, 0x08]] }) },
     0x712: { resp: 0x77c, ecu: new FakeEcu({ ids: { F197: "EPS_ZFLS Kl.11", F187: "7C1909144A", F189: "2701", F1A3: "H04" }, dtcs: [] }) },

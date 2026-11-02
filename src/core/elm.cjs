@@ -97,7 +97,7 @@ class Elm {
     try { await this.send("", 1500); } catch {}
     let id = "";
     try { id = await this.at("ATZ", 5000); } catch { id = await this.at("ATZ", 5000); }
-    this.version = (id.match(/(ELM327|STN|OBDLink)[^\r\n>]*/i) || [id])[0].trim();
+    this.version = (id.match(/(ELM327|STN|OBDLink|vLinker|Vgate)[^\r\n>]*/i) || [id])[0].trim();
     await this.at("ATE0");
     await this.at("ATL0");
     await this.at("ATS1");

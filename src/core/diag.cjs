@@ -15,6 +15,7 @@ const { SimTeslaTransport } = require("./simtesla.cjs");
 class Diag extends EventEmitter {
   constructor() {
     super();
+    this.mileageDids = new Set(); // « adresse:numéro » des valeurs reconnues comme kilométrage
     this.t = null;
     this.elm = null;
     this.info = null;
@@ -179,10 +180,50 @@ class Diag extends EventEmitter {
       this.need(); this.noTesla(); this.inVag = true;
       if (op === "did") { const b = await this.uds.did(m, args[0]); return b ? require("./uds.cjs").interpret(b) : null; }
       if (op === "readCoding") return this.uds.readCoding(m);
+      if (op === "writeDid" && this.mileageDids.has(`${m.req}:${String(args[0]).toUpperCase()}`))
+        throw new Error("Cette valeur est le kilométrage du véhicule : sa modification est interdite (fraude au compteur). G&L Diag permet seulement de le vérifier.");
       return this.uds[op](m, ...args);
     });
   }
   cancelScan() { this.scanCancelled = true; }
+
+  // Vérification du kilométrage : compare le compteur avec les valeurs trouvées dans chaque calculateur
+  // known : { "<référence pièce>": ["DID", ...] } valeurs déjà reconnues lors d'une recherche précédente
+  checkMileage(modules, ref, ranges, known = {}, onProgress = () => {}) {
+    this.scanCancelled = false;
+    return this.run(async () => {
+      this.need(); this.noTesla(); this.inVag = true;
+      const res = { obd: null, modules: [] };
+      if (!this.truck) { await this.leaveVag(); try { const v = await this.obd.readPids([0xa6]); res.obd = v[0xa6] ?? null; } catch {} this.inVag = true; }
+      const { Uds } = require("./uds.cjs");
+      for (let i = 0; i < modules.length; i++) {
+        if (this.scanCancelled) break;
+        const m = modules[i];
+        const r = { addr: m.addr, name: m.name, part: m.partNumber || null, matches: [], scanned: 0, knownValues: [] };
+        // 1. valeurs déjà connues pour cette référence de calculateur : lecture directe
+        for (const k of known[r.part] || []) {
+          this.mileageDids.add(`${m.req}:${k.did}`);
+          try {
+            const b = await this.uds.did(m, k.did, true);
+            if (!b) continue;
+            const v = require("./uds.cjs").interpret(b), raw = v.u32 ?? v.u24 ?? v.u16;
+            if (raw !== undefined) r.knownValues.push({ did: k.did, raw: v.hex, km: Math.round(raw * k.scale), diff: Math.round(raw * k.scale - ref) });
+          } catch {}
+        }
+        // 2. recherche dans les zones demandées
+        for (const [from, to] of ranges) {
+          if (this.scanCancelled) break;
+          const found = await this.uds.scanDids(m, from, to, (p, did, n) => onProgress((i + (ranges.findIndex((x) => x[0] === from) + p) / ranges.length) / modules.length, `${m.addr} ${m.name} · ${did}`), () => this.scanCancelled);
+          r.scanned += found.length;
+          r.matches.push(...Uds.mileageMatches(found, ref));
+        }
+        for (const x of r.matches) this.mileageDids.add(`${m.req}:${x.did}`);
+        res.modules.push(r);
+      }
+      onProgress(1, "");
+      return res;
+    });
+  }
   scanDids(m, from, to, onProgress) {
     this.scanCancelled = false;
     return this.run(async () => { this.need(); this.inVag = true; return this.uds.scanDids(m, from, to, onProgress, () => this.scanCancelled); });

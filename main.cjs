@@ -59,6 +59,7 @@ const api = {
   atelier: (op, m, ...args) => diag.atelier(op, m, ...args),
   scanDids: (m, from, to) => diag.scanDids(m, from, to, (p, did, n) => send("scan-progress", { p, did, n })),
   cancelScan: () => diag.cancelScan(),
+  checkMileage: (mods, ref, ranges, known) => diag.checkMileage(mods, ref, ranges, known, (p, txt) => send("km-progress", { p, txt })),
   mode06: () => diag.mode06(),
   mode09: () => diag.mode09(),
   sniff: (ms) => diag.sniff(ms),

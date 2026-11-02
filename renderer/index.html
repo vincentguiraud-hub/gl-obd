@@ -16,6 +16,7 @@
     <a data-page="connexion" class="active"><i>⚡</i>Connexion</a>
     <a data-page="defauts" class="notTesla"><i>⚠</i><span id="navDtc">Défauts moteur (OBD)</span></a>
     <a data-page="vag" class="notTesla"><i>▦</i><span id="navVag">Calculateurs</span></a>
+    <a data-page="km" class="notTesla"><i>⏱</i>Vérifier le kilométrage</a>
     <a data-page="atelier" class="notTesla"><i>⚙</i>Atelier calculateur</a>
     <a data-page="live" class="notTesla"><i>◔</i>Données en direct</a>
     <a data-page="ct" class="carOnly notTesla"><i>✓</i>Préparation CT</a>
@@ -188,6 +189,28 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- KILOMÉTRAGE -->
+  <section class="page hidden" id="page-km">
+    <div class="row between"><h1>Vérifier le kilométrage</h1></div>
+    <p class="muted">Le logiciel cherche dans chaque calculateur les valeurs qui correspondent au kilométrage affiché au compteur. Si plusieurs calculateurs donnent le même kilométrage, le compteur est cohérent. Utile avant l'achat d'un véhicule d'occasion. <b>La modification du kilométrage n'est pas possible</b> : c'est une fraude, et les valeurs reconnues sont protégées contre l'écriture.</p>
+    <div class="card">
+      <div class="row wrap">
+        <label class="grow">Kilométrage affiché au compteur (km) <input id="kmRef" class="mono" placeholder="ex. 148421"></label>
+        <label class="grow">Recherche
+          <select id="kmMode">
+            <option value="rapide">Rapide : zones les plus courantes (environ 1 min par calculateur)</option>
+            <option value="complete">Complète : tout le principal (3 à 6 min par calculateur)</option>
+          </select>
+        </label>
+        <button class="btn primary" id="kmBtn" style="margin-top:22px">Vérifier</button>
+        <button class="btn ghost hidden" id="kmStop" style="margin-top:22px">Arrêter</button>
+      </div>
+      <div id="kmMods" class="row wrap mt"></div>
+      <div class="progress hidden" id="kmProg"><div></div><span></span></div>
+    </div>
+    <div id="kmOut"></div>
   </section>
 
   <!-- TESLA -->

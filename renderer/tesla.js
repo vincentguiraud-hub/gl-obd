@@ -169,3 +169,44 @@ async function renderBackups() {
 }
 document.querySelector('#nav a[data-page=options]').addEventListener("click", () => { renderOptions(); renderBackups(); });
 document.querySelector('#nav a[data-page=tesla]').addEventListener("click", () => renderTeslaAll());
+
+
+// ================= KILOMÉTRAGE =================
+const KM_RANGES = { rapide: [[0x0200, 0x02ff], [0x1000, 0x10ff], [0x2000, 0x2fff]], complete: [[0x0100, 0x2fff]] };
+const kmKnown = () => (A.labels && A.labels.__km__) || {};
+function renderKmMods() {
+  const mods = S.modules.filter((m) => S.vag[m.addr]?.reachable !== false);
+  $("#kmMods").innerHTML = mods.length ? `<span class="muted">Calculateurs à interroger :</span>` + mods.map((m) => `<label class="row" style="margin:0 10px 0 0"><input type="checkbox" data-km="${esc(m.addr)}" style="width:auto" ${["01", "02", "03", "17", "09", "19", "15", "00", "0B", "7E0", "7E1"].includes(m.addr) ? "checked" : ""}> ${esc(m.addr)} ${esc(m.name)}</label>`).join("") : "";
+}
+document.querySelector('#nav a[data-page=km]').addEventListener("click", renderKmMods);
+diag.on("km-progress", ({ p, txt }) => { const pr = $("#kmProg"); pr.firstElementChild.style.width = Math.round(p * 100) + "%"; pr.lastElementChild.textContent = txt || "Terminé"; });
+$("#kmStop").onclick = () => diag.cancelScan();
+$("#kmBtn").onclick = () => needConn() && busy($("#kmBtn"), async () => {
+  const ref = parseInt($("#kmRef").value.replace(/\D/g, ""), 10);
+  if (!ref) throw new Error("Indique le kilométrage affiché au compteur.");
+  const sel = $$("[data-km]:checked").map((c) => c.dataset.km);
+  if (!sel.length) throw new Error("Coche au moins un calculateur (lance d'abord le diagnostic complet pour savoir lesquels répondent).");
+  const mods = sel.map((a) => { const m = S.modules.find((x) => x.addr === a); return { ...m, partNumber: S.vag[a]?.partNumber || null }; });
+  $("#kmProg").classList.remove("hidden"); $("#kmStop").classList.remove("hidden"); S.working = true;
+  let res;
+  try { res = await diag.checkMileage(mods, ref, KM_RANGES[$("#kmMode").value], kmKnown()); }
+  finally { S.working = false; $("#kmStop").classList.add("hidden"); setTimeout(() => $("#kmProg").classList.add("hidden"), 1500); }
+  // mémorise les valeurs reconnues pour lire directement la prochaine fois (même référence de calculateur)
+  const known = { ...kmKnown() };
+  for (const r of res.modules) if (r.part && r.matches.length) known[r.part] = [...new Map([...(known[r.part] || []), ...r.matches.map((x) => ({ did: x.did, scale: x.scale }))].map((x) => [x.did, x])).values()];
+  A.labels.__km__ = known; diag.saveLabels(A.labels);
+  const rows = [];
+  if (res.obd) rows.push({ src: "Moteur (OBD standard)", did: "PID A6", km: Math.round(res.obd), diff: Math.round(res.obd - ref) });
+  for (const r of res.modules) {
+    for (const x of r.knownValues) rows.push({ src: `${r.addr} ${r.name}`, did: x.did, km: x.km, diff: x.diff, known: true });
+    for (const x of r.matches) if (!r.knownValues.find((k) => k.did === x.did)) rows.push({ src: `${r.addr} ${r.name}`, did: `${x.did} (${x.label})`, km: x.km, diff: x.diff });
+  }
+  const far = rows.filter((x) => x.diff > Math.max(ref * 0.02, 1000));
+  const ok = rows.filter((x) => Math.abs(x.diff) <= Math.max(ref * 0.02, 300));
+  const verdict = far.length ? ["bad", "⚠", "Incohérence détectée", `${far.length} calculateur(s) mémorise(nt) un kilométrage nettement plus élevé que le compteur : le compteur a peut-être été modifié. Fais vérifier par un professionnel.`]
+    : ok.length >= 2 ? ["ok", "✓", "Kilométrage cohérent", `${ok.length} sources donnent un kilométrage proche du compteur.`]
+    : ["warn", "?", "Pas assez de sources", "Trop peu de calculateurs ont donné une valeur comparable. Essaie la recherche complète ou coche d'autres calculateurs."];
+  $("#kmOut").innerHTML = `<div class="verdict ${verdict[0]}"><span class="big">${verdict[1]}</span><div><b>${verdict[2]}</b>${verdict[3]}</div></div>
+    ${rows.length ? `<div class="card flush"><table class="tbl"><thead><tr><th>Source</th><th>Valeur</th><th>Kilométrage</th><th>Écart avec le compteur</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.src)}</td><td class="mono">${esc(x.did)}${x.known ? " ★" : ""}</td><td><b>${fmt(x.km, 0)} km</b></td><td><span class="badge ${Math.abs(x.diff) <= Math.max(ref * 0.02, 300) ? "ok" : x.diff > 0 ? "bad" : "warn"}">${x.diff > 0 ? "+" : ""}${fmt(x.diff, 0)} km</span></td></tr>`).join("")}</tbody></table></div>
+    <p class="muted small">★ valeur déjà reconnue lors d'une vérification précédente sur un calculateur de même référence : elle est relue même si elle ne correspond plus au compteur, ce qui permet de détecter un compteur modifié. Un petit écart (quelques km) est normal : chaque calculateur enregistre à des moments différents.</p>` : ""}`;
+}).catch(() => {});
