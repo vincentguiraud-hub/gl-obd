@@ -10,6 +10,7 @@ class FakeEcu {
     this.dids = o.dids || {}; // { "1234": [octets] ou () => [octets] }
     this.writable = new Set(o.writable || []);
     this.needsExtended = !!o.needsExtended;
+    this.refuse14 = !!o.refuse14; // comme certains moteurs VW : effacement constructeur refusé (0x11)
     this.pending78 = !!o.pending78;
     this.loginCode = o.loginCode ?? null;
     this.routines = o.routines || {};
@@ -60,6 +61,7 @@ class FakeEcu {
       return neg(0x12);
     }
     if (sid === 0x14) {
+      if (this.refuse14) return neg(0x11);
       if (this.needsExtended && this.session !== 3) return neg(0x22);
       this.dtcs = []; return [[0x54]];
     }

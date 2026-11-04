@@ -163,7 +163,20 @@ class Diag extends EventEmitter {
     return this.vag ? this.vag.modules() : new Vag(null).modules();
   }
   vagScanModule(m) { return this.run(async () => { this.need(); this.inVag = true; return this.truck ? this.hd.scanModule(m) : this.vag.scanModule(m); }); }
-  vagClear(m) { return this.run(async () => { this.need(); this.inVag = true; return this.truck ? this.hd.clearModule(m) : this.vag.clearDtcs(m); }); }
+  vagClear(m) {
+    return this.run(async () => {
+      this.need(); this.inVag = true;
+      if (this.truck) return this.hd.clearModule(m);
+      try { return await this.vag.clearDtcs(m); }
+      catch (e) {
+        // Calculateur moteur qui refuse l'effacement constructeur : effacement OBD standard (mode 04)
+        if (m.req !== 0x7e0 && m.req !== 0x7e1) throw e;
+        await this.vag.done(); this.inVag = false;
+        await this.obd.clearDtcs();
+        return true;
+      }
+    });
+  }
   vagDiscover(onProgress) {
     return this.run(async () => {
       this.need(); this.inVag = true;

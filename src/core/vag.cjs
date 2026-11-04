@@ -124,23 +124,23 @@ class Vag {
 
   async clearDtcs(m) {
     await this.open(m);
-    try {
-      const r = await this.elm.uds("14FFFFFF", 8000);
-      if (r && r[0] === 0x54) return true;
-    } catch (e) {
-      if (![0x22, 0x7e, 0x7f, 0x33].includes(e.nrc)) throw e;
-    }
-    // certains calculateurs demandent la session étendue
-    await this.elm.uds("1003", 4000);
-    let r;
-    try { r = await this.elm.uds("14FFFFFF", 8000); }
-    catch (e) {
-      if (e.nrc === 0x33) throw new Error("Calculateur protégé (passerelle sécurisée SFD des VW/Audi/Seat/Škoda 2020 et plus) : la lecture fonctionne, mais l'effacement exige un déverrouillage en ligne constructeur.");
-      throw e;
+    const tries = [["", "14FFFFFF"], ["1003", "14FFFFFF"], ["1003", "14FFFF33"]];
+    let last = null;
+    for (const [sess, cmd] of tries) {
+      try {
+        if (sess) await this.elm.uds(sess, 4000);
+        const r = await this.elm.uds(cmd, 8000);
+        if (r && r[0] === 0x54) { if (sess) { try { await this.elm.uds("1001", 2000); } catch {} } return true; }
+      } catch (e) {
+        if (e.nrc === undefined) throw e;
+        last = e;
+      }
     }
     try { await this.elm.uds("1001", 2000); } catch {}
-    if (r && r[0] === 0x54) return true;
-    throw new Error("Le calculateur n'a pas confirmé l'effacement.");
+    if (last && last.nrc === 0x33) throw new Error("Calculateur protégé (passerelle sécurisée SFD des VW/Audi/Seat/Škoda 2020 et plus) : la lecture fonctionne, mais l'effacement exige un déverrouillage en ligne constructeur.");
+    const e = new Error(last ? last.message : "Le calculateur n'a pas confirmé l'effacement.");
+    e.nrc = last ? last.nrc : undefined;
+    throw e;
   }
 
   async scanModule(m) {
