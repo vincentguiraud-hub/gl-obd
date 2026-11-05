@@ -39,6 +39,48 @@ function statusInfo(s) {
   };
 }
 
+// Traduction des noms de système (souvent en allemand chez VW) en libellé français
+const NAME_RULES = [
+  [/getriebe|dsg|gsg|\btcm\b|gearbox|transmission/i, "Boîte de vitesses"],
+  [/motor|\becm\b|\bedc|\bmed\d|\bmg1|tdi|tsi|\bfsi|engine/i, "Électronique moteur"],
+  [/esc|abs|brems|brake|\besp\b/i, "Freins (ABS / ESP)"],
+  [/airbag|\bsrs\b/i, "Airbags"],
+  [/kombi|cluster|instrument/i, "Combiné d'instruments"],
+  [/gateway|\bgw\b/i, "Passerelle de diagnostic (gateway)"],
+  [/bcm|bordnetz|body/i, "Électronique centrale (BCM)"],
+  [/klima|climatronic|climatic|\bac\b|hvac|air ?cond/i, "Climatisation / chauffage"],
+  [/standheiz|zuheiz|heater|webasto|eberspächer/i, "Chauffage additionnel"],
+  [/eps|lenkhilfe|servo|power steer/i, "Direction assistée"],
+  [/lenks|\blsm\b|steering col|lenkwinkel/i, "Colonne de direction"],
+  [/park|pdc|ops\b|einpark/i, "Aide au stationnement"],
+  [/rückfahr|rueckfahr|rear ?view|rvc|area ?view/i, "Caméra de recul / vision 360°"],
+  [/frontkam|front ?cam|kamera|camera/i, "Caméra avant"],
+  [/^acc|\bacc\b|distanz|radar|abstand/i, "Régulateur de distance (ACC)"],
+  [/spurwechsel|\bswa\b|lane ?change|blind/i, "Aide au changement de voie"],
+  [/spurhalte|lane/i, "Aide au maintien de voie"],
+  [/(tsg|tür|tuer)[ _-]?(ft|fa)\b|fahrertür|driver door/i, "Électronique de porte conducteur"],
+  [/(tsg|tür|tuer)[ _-]?(bt|bf)\b|beifahrertür|passenger door/i, "Électronique de porte passager"],
+  [/tür|tuer|door|\bftsg|\bbtsg|\btsg/i, "Électronique de porte"],
+  [/reifen|\brdk\b|tpms|tire/i, "Contrôle de pression des pneus"],
+  [/anhänger|anhaenger|ahk|trailer/i, "Attelage / remorque"],
+  [/telemat|\bocu|ecall|notruf|connect/i, "Télématique / appel d'urgence"],
+  [/sound|verstärker|verstaerker|amplif|dsp/i, "Amplificateur audio"],
+  [/\bmu[-_ ]|radio|infotain|discover|composition|navi|mib/i, "Électronique d'information (multimédia)"],
+  [/licht|scheinwerfer|\blwr\b|headl|light/i, "Éclairage / phares"],
+  [/sitz|seat/i, "Sièges"],
+  [/kessy|zugang|schliess|access|keyless/i, "Accès et démarrage sans clé"],
+  [/wegfahr|immo/i, "Antidémarrage"],
+  [/tacho|fahrtenschreiber|tachograph/i, "Chronotachygraphe"],
+  [/dach|roof/i, "Toit ouvrant"],
+  [/regen|rain|wisch|wiper/i, "Capteur de pluie / essuie-glaces"],
+  [/batter|energie|\bbms\b|hv/i, "Batterie / gestion de l'énergie"],
+];
+function frenchName(sys) {
+  if (!sys) return null;
+  const r = NAME_RULES.find(([re]) => re.test(sys));
+  return r ? r[1] : null;
+}
+
 // Autres marques : adresses OBD standard (réponse = requête + 8)
 const GENERIC = [
   { addr: "7E0", name: "Électronique moteur", req: 0x7e0, resp: 0x7e8 },
@@ -158,7 +200,7 @@ class Vag {
     // VW : réponse = requête + 0x6A ; autres marques : + 8. Puis 7E0–7E7 (moteur, boîte, hybride…)
     const off = this.generic ? 8 : 0x6a;
     const list = [];
-    for (let r = 0x700; r <= (this.generic ? 0x7d7 : 0x77f); r++) list.push([r, r + off]);
+    for (let r = 0x700; r <= (this.generic ? 0x7d7 : 0x795); r++) list.push([r, r + off]);
     for (let r = 0x7e0; r <= 0x7e7; r++) list.push([r, r + 8]);
     for (let i = 0; i < list.length; i++) {
       const [req, resp] = list[i];
@@ -174,11 +216,11 @@ class Vag {
     onProgress(1, "");
     return found.map((f) => {
       const known = (this.generic ? GENERIC : MODULES).find((k) => k.req === f.req);
-      return { addr: known ? known.addr : hex3(f.req), name: known ? known.name : f.name || `Calculateur ${hex3(f.req)}`, req: f.req, resp: f.resp, reqHex: hex3(f.req), respHex: hex3(f.resp) };
+      return { addr: known ? known.addr : hex3(f.req), name: known ? known.name : frenchName(f.name) || `Calculateur ${hex3(f.req)}`, systemName: f.name, req: f.req, resp: f.resp, reqHex: hex3(f.req), respHex: hex3(f.resp) };
     });
   }
 
   async done() { await this.elm.resetTarget(); }
 }
 
-module.exports = { Vag, MODULES, hex3 };
+module.exports = { Vag, MODULES, hex3, frenchName };

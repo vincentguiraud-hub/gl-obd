@@ -228,8 +228,8 @@ function onConnected(info) {
   ].map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
   $("#vagNote").classList.toggle("bad", !info.vagCapable);
   renderVagTable();
-  if (info.truck) $("#vagNote").textContent = "Identification et défauts de chaque calculateur du camion (moteur EDC, boîte TipMatic, EBS, Intarder, ECAS, AdBlue/SCR…) par UDS sur CAN 29 bits. Lance « Recherche étendue » pour trouver tous les calculateurs présents.";
-  else if (!info.vag) $("#vagNote").textContent = `${info.brand || "Ce véhicule"} : le moteur et la boîte sont listés ci-dessous. Lance « Recherche étendue » pour trouver tous les autres calculateurs (ABS, airbag, BCM…). Les noms exacts dépendent du constructeur.`;
+  if (info.truck) $("#vagNote").textContent = "Identification et défauts de chaque calculateur du camion (moteur EDC, boîte TipMatic, EBS, Intarder, ECAS, AdBlue/SCR…) par UDS sur CAN 29 bits. « Scanner tous les calculateurs » trouve d'abord tous ceux qui sont présents.";
+  else if (!info.vag) $("#vagNote").textContent = `${info.brand || "Ce véhicule"} : le moteur et la boîte sont listés ci-dessous. « Scanner tous les calculateurs » trouve d'abord tous les autres (ABS, airbag, BCM…). Les noms exacts dépendent du constructeur.`;
   $("#fullScanBtn").textContent = info.tesla ? "▶ Voir la batterie et le véhicule" : "▶ Diagnostic complet";
   go("connexion");
   toast("Connecté à " + title);
@@ -259,11 +259,10 @@ $("#fullScanBtn").onclick = () => S.info?.tesla ? go("tesla") : busy($("#fullSca
       try { S.freeze = await diag.freezeFrame(); renderFreeze(); } catch {}
     }
     if (S.info.vagCapable) {
-      const mods = S.modules;
-      for (let i = 0; i < mods.length; i++) {
-        step(0.2 + (0.8 * i) / mods.length, `Calculateur ${mods[i].addr} – ${mods[i].name}…`);
-        await scanModule(mods[i]);
-      }
+      step(0.2, "Recherche de tous les calculateurs du véhicule…");
+      await discoverModules();
+      $("#vagProg").classList.add("hidden");
+      await scanAllModules((p, t) => step(0.25 + 0.75 * p, `Calculateur ${t}…`));
     }
     step(1, "Terminé");
     await saveHistory();
@@ -364,16 +363,38 @@ function renderModule() {
     busy($("#modClear"), async () => { await diag.vagClear(m); toast("Défauts effacés"); await scanModule(m); saveHistory(); }).catch(() => {});
   };
 }
+// Recherche de TOUS les calculateurs présents (une fois par véhicule, mémorisée)
+async function discoverModules(force = false) {
+  const key = "mods:" + (S.info?.vin || "?");
+  let found = force ? null : store.get(key, null);
+  if (!found) {
+    $("#vagProg").classList.remove("hidden");
+    found = await diag.vagDiscover();
+    store.set(key, found);
+  }
+  const id = (m) => m.req ?? m.sa;
+  const base = await diag.vagModules();
+  for (const f of found) if (!base.find((m) => id(m) === id(f))) base.push(f);
+  S.modules = base;
+  for (const m of S.modules) if (!found.find((f) => id(f) === id(m))) S.vag[m.addr] = { ...m, reachable: false };
+  S.modules.sort((a, b) => (S.vag[a.addr]?.reachable === false) - (S.vag[b.addr]?.reachable === false) || id(a) - id(b));
+  renderVagTable();
+  return found.length;
+}
+async function scanAllModules(step) {
+  const list = S.modules.filter((m) => S.vag[m.addr]?.reachable !== false);
+  for (let i = 0; i < list.length; i++) {
+    step(i / list.length, `${list[i].addr} – ${list[i].name}`);
+    await scanModule(list[i]);
+  }
+}
 $("#vagScanAll").onclick = () => needConn() && busy($("#vagScanAll"), async () => {
   S.working = true;
   const prog = $("#vagProg"); prog.classList.remove("hidden");
+  const step = (p, t) => { prog.firstElementChild.style.width = Math.round(p * 100) + "%"; prog.lastElementChild.textContent = t; };
   try {
-    for (let i = 0; i < S.modules.length; i++) {
-      const m = S.modules[i];
-      prog.firstElementChild.style.width = Math.round((i / S.modules.length) * 100) + "%";
-      prog.lastElementChild.textContent = `${m.addr} – ${m.name}`;
-      await scanModule(m);
-    }
+    if (S.info.vagCapable) await discoverModules();
+    await scanAllModules(step);
     const first = S.modules.find((m) => S.vag[m.addr]?.dtcs?.length) || S.modules.find((m) => S.vag[m.addr]?.reachable);
     if (first) selectModule(first.addr);
     saveHistory();
@@ -386,22 +407,11 @@ diag.on("progress", ({ p, addr }) => {
 });
 $("#vagDiscover").onclick = async () => {
   if (!needConn()) return;
-  if (!await confirmBox("Recherche étendue", "<p>Le logiciel va interroger toutes les adresses possibles (environ 1 à 2 minutes en Bluetooth) pour trouver tous les calculateurs présents, y compris ceux qui ne sont pas dans la liste.</p>", "Lancer", "primary")) return;
+  if (!await confirmBox("Rechercher à nouveau les calculateurs", "<p>Le logiciel interroge toutes les adresses possibles (environ 30 s en USB, 1 à 2 min en Bluetooth). À refaire si un équipement a été ajouté au véhicule.</p>", "Lancer", "primary")) return;
   busy($("#vagDiscover"), async () => {
     S.working = true;
-    $("#vagProg").classList.remove("hidden");
-    try {
-      const found = await diag.vagDiscover();
-      for (const f of found) {
-        const known = S.modules.find((m) => m.req === f.req);
-        if (!known) S.modules.push(f);
-      }
-      // ceux qui n'ont pas répondu sont marqués absents
-      for (const m of S.modules) if (!found.find((f) => f.req === m.req) && !S.vag[m.addr]) S.vag[m.addr] = { ...m, reachable: false };
-      S.modules.sort((a, b) => (S.vag[a.addr]?.reachable === false) - (S.vag[b.addr]?.reachable === false));
-      renderVagTable();
-      toast(`${found.length} calculateur(s) trouvé(s)`);
-    } finally { S.working = false; $("#vagProg").classList.add("hidden"); }
+    try { const n = await discoverModules(true); toast(`${n} calculateur(s) trouvé(s)`); }
+    finally { S.working = false; $("#vagProg").classList.add("hidden"); }
   }).catch(() => {});
 };
 

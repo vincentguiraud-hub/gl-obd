@@ -37,6 +37,11 @@ function makeModules(sim) {
     0x712: { resp: 0x77c, ecu: new FakeEcu({ ids: { F197: "EPS_ZFLS Kl.11", F187: "7C1909144A", F189: "2701", F1A3: "H04" }, dtcs: [] }) },
     0x746: { resp: 0x7b0, ecu: new FakeEcu({ ids: { F197: "Climatronic", F187: "7C0907044", F189: "0302", F1A3: "H03" }, dtcs: [] }) },
     0x74f: { resp: 0x7b9, ecu: new FakeEcu({ ids: { F197: "Frontkamera", F187: "3QD980654", F189: "0410", F1A3: "H06" }, dtcs: [] }) },
+    0x70a: { resp: 0x774, ecu: new FakeEcu({ ids: { F197: "Parkhilfe 8K", F187: "2Q0919294", F189: "0204" }, dtcs: [[0xc1, 0x56, 0x00, 0x08]] }) },
+    0x74a: { resp: 0x7b4, ecu: new FakeEcu({ ids: { F197: "TSG FT", F187: "7C0959593", F189: "0123" }, dtcs: [] }) },
+    0x74b: { resp: 0x7b5, ecu: new FakeEcu({ ids: { F197: "TSG BT", F187: "7C0959592", F189: "0123" }, dtcs: [] }) },
+    0x767: { resp: 0x7d1, ecu: new FakeEcu({ ids: { F197: "OCU3 eCall", F187: "3QF035284", F189: "0507" }, dtcs: [] }) },
+    0x73a: { resp: 0x7a4, ecu: new FakeEcu({ ids: { F197: "Standheizung", F187: "7C0963513", F189: "0101" }, dtcs: [[0x90, 0x11, 0x16, 0x08]] }) },
   };
 }
 
