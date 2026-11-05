@@ -5,7 +5,7 @@ const call = (name) => (...args) => ipcRenderer.invoke("api", name, ...args);
 const names = ["listPorts", "connect", "disconnect", "voltage", "readDtcs", "clearDtcs", "readiness", "freezeFrame",
   "supportedPids", "readPids", "vagModules", "vagScanModule", "vagClear", "vagDiscover", "raw", "history", "saveHistory",
   "deleteHistory", "savePdf", "saveCsv", "openExternal", "appVersion", "installUpdate",
-  "atelier", "scanDids", "cancelScan", "mode06", "mode09", "sniff", "saveText", "backup", "labels", "saveLabels", "teslaPoll", "teslaAll", "listBackups", "recipes", "saveRecipes", "importRecipes", "requestChange", "openRequests", "checkMileage"];
+  "atelier", "scanDids", "cancelScan", "mode06", "mode09", "sniff", "saveText", "backup", "labels", "saveLabels", "teslaPoll", "teslaAll", "listBackups", "recipes", "saveRecipes", "importRecipes", "requestChange", "openRequests", "checkMileage", "supportedRaw"];
 
 const api = {};
 for (const n of names) api[n] = call(n);

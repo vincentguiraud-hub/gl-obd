@@ -151,9 +151,11 @@ class Diag extends EventEmitter {
       this.need(); this.noTesla(); await this.leaveVag();
       if (this.truck) return this.hd.params();
       const list = await this.obd.supportedPids();
-      return list.filter((p) => PIDS[p]).map((p) => ({ pid: p, name: PIDS[p].name, unit: PIDS[p].unit, min: PIDS[p].min ?? 0, max: PIDS[p].max ?? null, dec: PIDS[p].dec ?? (["°C", "%", "kPa"].includes(PIDS[p].unit) ? 0 : 1) }));
+      return list.filter((p) => PIDS[p] && !PIDS[p].hidden).map((p) => ({ pid: p, name: PIDS[p].name, unit: PIDS[p].unit, min: PIDS[p].min ?? 0, max: PIDS[p].max ?? null, dec: PIDS[p].dec ?? (["°C", "%", "kPa"].includes(PIDS[p].unit) ? 0 : 1) }));
     });
   }
+  // Liste brute des PID gérés par le moteur (y compris ceux réservés à l'onglet Performance)
+  supportedRaw() { return this.run(async () => { this.need(); this.noTesla(); await this.leaveVag(); if (this.truck) return []; return this.obd.supportedPids(); }); }
   readPids(pids) { return this.run(async () => { this.need(); await this.leaveVag(); return this.truck ? this.hd.readParams(pids) : this.obd.readPids(pids); }); }
 
   async leaveVag() { if (this.inVag && !this.truck) { await this.vag.done(); this.inVag = false; } }

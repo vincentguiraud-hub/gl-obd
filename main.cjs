@@ -51,6 +51,7 @@ const api = {
   freezeFrame: () => diag.freezeFrame(),
   supportedPids: () => diag.supportedPids(),
   readPids: (pids) => diag.readPids(pids),
+  supportedRaw: () => diag.supportedRaw(),
   vagModules: () => diag.vagModules(),
   vagScanModule: (m) => diag.vagScanModule(m),
   vagClear: (m) => diag.vagClear(m),

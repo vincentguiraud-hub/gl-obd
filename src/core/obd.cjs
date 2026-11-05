@@ -45,6 +45,9 @@ const PIDS = {
   0x61: { name: "Couple demandé par le conducteur", unit: "%", n: 1, f: (d) => d[0] - 125, min: -125, max: 130, dec: 0 },
   0x62: { name: "Couple moteur réel", unit: "%", n: 1, f: (d) => d[0] - 125, min: -125, max: 130, dec: 0 },
   0x63: { name: "Couple de référence moteur", unit: "Nm", n: 2, f: (d) => u16(d[0], d[1]), dec: 0 },
+  // Régulation de suralimentation : pression demandée et réelle (absolues, kPa) – utilisé par l'onglet Performance
+  0x70: { name: "Suralimentation demandée / réelle", unit: "kPa", n: 9, hidden: true,
+    f: (d) => ({ cmd: d[0] & 1 ? u16(d[1], d[2]) * 0.03125 : null, act: d[0] & 2 ? u16(d[3], d[4]) * 0.03125 : null }) },
   0xa6: { name: "Kilométrage (compteur)", unit: "km", n: 4, f: (d) => ((d[0] * 2 ** 24) + (d[1] << 16) + (d[2] << 8) + d[3]) / 10, dec: 0 },
 };
 

@@ -129,8 +129,9 @@ class SimTransport extends EventEmitter {
   live() {
     const t = (Date.now() - this.t0) / 1000;
     const running = t > 3;
-    const rpm = running ? 820 + Math.max(0, Math.sin(t / 3) * 1400) + Math.random() * 25 : 0;
-    const speed = running ? Math.max(0, Math.sin(t / 3) * 70) : 0;
+    const ph = Math.max(0, Math.sin((t - 3) / 3));
+    const rpm = running ? 820 + ph * 3000 + Math.random() * 25 : 0;
+    const speed = running ? ph * 130 : 0;
     const cool = Math.min(90, 20 + t * 1.5);
     return { rpm, speed, cool, running, t };
   }
@@ -164,6 +165,7 @@ class SimTransport extends EventEmitter {
       0x5c: () => [Math.round(Math.min(95, 18 + v.t * 1.2) + 40)],
       0x62: () => [Math.round(125 + (v.running ? v.speed / 2 : 0))],
       0x63: () => [0x01, 0x54],
+      0x70: () => { const c = Math.round((100 + v.speed * 1.4) / 0.03125), a = Math.round((100 + v.speed * 1.2) / 0.03125); return [0x03, c >> 8, c & 0xff, a >> 8, a & 0xff, 0, 0, 0, 0]; },
       0xa6: () => { const km = 1484210; return [(km >>> 24) & 0xff, (km >> 16) & 0xff, (km >> 8) & 0xff, km & 0xff]; },
     };
     const supported = Object.keys(pidVal).map(Number);

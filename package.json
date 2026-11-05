@@ -1,7 +1,7 @@
 {
   "name": "gl-obd",
   "productName": "G&L Diag",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "G&L Diag – logiciel de diagnostic OBD (ELM327) pour VW, Audi, Seat, Škoda, MAN et toutes marques",
   "author": "G&L Créations",
   "main": "main.cjs",

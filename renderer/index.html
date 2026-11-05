@@ -18,6 +18,7 @@
     <a data-page="vag" class="notTesla"><i>▦</i><span id="navVag">Calculateurs</span></a>
     <a data-page="km" class="notTesla"><i>⏱</i>Vérifier le kilométrage</a>
     <a data-page="atelier" class="notTesla"><i>⚙</i>Atelier calculateur</a>
+    <a data-page="perf" class="notTesla carOnly"><i>🏁</i>Performance</a>
     <a data-page="live" class="notTesla"><i>◔</i>Données en direct</a>
     <a data-page="ct" class="carOnly notTesla"><i>✓</i>Préparation CT</a>
     <a data-page="freeze" class="carOnly notTesla"><i>❄</i>Arrêt sur image</a>
@@ -191,6 +192,39 @@
     </div>
   </section>
 
+  <!-- PERFORMANCE -->
+  <section class="page hidden" id="page-perf">
+    <h1>Performance</h1>
+    <p class="muted">Mesure la puissance et le couple réels du moteur, chronomètre les accélérations et cherche ce qui fait perdre de la puissance (turbo, débit d'air, EGR…). Compare chaque mesure avec ta mesure de référence. <b>À faire uniquement sur terrain privé.</b></p>
+    <div class="grid2">
+      <div class="card">
+        <div class="row between"><h2>Banc de puissance virtuel</h2><div class="row"><label class="row" style="margin:0;white-space:nowrap">Masse <input id="pfMass" class="mono" style="width:80px"> kg</label><button class="btn primary" id="pfBtn">▶ Démarrer une mesure</button></div></div>
+        <ol class="small muted" style="margin:6px 0 0 18px;padding:0"><li>Moteur chaud (liquide &gt; 80 °C), en 3<sup>e</sup>, vers 1 200 tr/min.</li><li>Clique sur « Démarrer », puis <b>pied au plancher</b> jusqu'au régime maxi.</li><li>Relâche : la mesure s'arrête toute seule.</li></ol>
+        <div class="tiles" id="pfLive" style="margin-top:12px"></div>
+        <canvas id="pfChart" width="1000" height="420" style="width:100%;margin-top:12px;background:#fafbfc;border-radius:10px"></canvas>
+        <div id="pfResult"></div>
+      </div>
+      <div>
+        <div class="card" style="margin-top:0">
+          <div class="row between"><h2>Chronos</h2><button class="btn ghost" id="chBtn">▶ Armer les chronos</button></div>
+          <p class="muted small">Arrête-toi, arme les chronos puis accélère : 0-50, 0-100 km/h et reprise 80-120 km/h se mesurent tout seuls.</p>
+          <div class="kv" id="chOut"></div>
+        </div>
+        <div class="card"><h2>Mesures enregistrées</h2><div id="pfRuns"></div></div>
+        <div class="card"><h2>Ce qui redonne de la puissance</h2>
+          <ul class="small" style="margin:0;padding-left:18px">
+            <li><b>Filtre à air</b> encrassé : débit d'air en baisse.</li>
+            <li><b>Débitmètre</b> sale : débit d'air bas sur toute la plage ; nettoyage au spray spécial, jamais au chiffon.</li>
+            <li><b>Durites et intercooler</b> : une fuite donne une pression turbo réelle très en dessous de la demandée.</li>
+            <li><b>Vanne EGR / volets d'admission</b> encrassés : écart EGR élevé, perte de reprise.</li>
+            <li><b>FAP chargé</b> : rouler 20 min sur voie rapide vers 2 500 – 3 000 tr/min pour lancer une régénération.</li>
+            <li><b>Pneus</b> bien gonflés, <b>gazole</b> de qualité, entretien à jour.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- KILOMÉTRAGE -->
   <section class="page hidden" id="page-km">
     <div class="row between"><h1>Vérifier le kilométrage</h1></div>
@@ -317,5 +351,6 @@
 <script src="app.js"></script>
 <script src="atelier.js"></script>
 <script src="tesla.js"></script>
+<script src="perf.js"></script>
 </body>
 </html>
