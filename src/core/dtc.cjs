@@ -157,13 +157,37 @@ const FTB = {
   0x96: "défaut interne du composant", 0x97: "fonctionnement bloqué par une autre fonction", 0x98: "surchauffe du composant",
 };
 
+// Base anglaise complète (≈ 9 400 codes génériques SAE + 5 600 codes constructeur, licence MIT)
+let EN = null, BRAND = [];
+function en() {
+  if (!EN) { try { EN = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "..", "..", "data", "dtc-en.json"), "utf8")); } catch { EN = { generic: {}, mfr: {} }; } }
+  return EN;
+}
+// Marque du véhicule connecté : sert à choisir les libellés constructeur
+function setBrand(brand) {
+  const b = (brand || "").toUpperCase();
+  const map = [[/AUDI/, ["AUDI", "VOLKSWAGEN"]], [/VOLKSWAGEN|SEAT|ŠKODA|SKODA|CUPRA|MAN|PORSCHE/, ["VOLKSWAGEN", "AUDI"]], [/MERCEDES/, ["MERCEDES"]], [/BMW|MINI/, ["BMW"]],
+    [/FORD/, ["FORD"]], [/TOYOTA|LEXUS/, ["TOYOTA", "LEXUS"]], [/NISSAN|INFINITI/, ["NISSAN", "INFINITI"]], [/HONDA|ACURA/, ["HONDA", "ACURA"]], [/MAZDA/, ["MAZDA"]],
+    [/KIA|HYUNDAI/, ["KIA"]], [/SUBARU/, ["SUBARU"]], [/MITSUBISHI/, ["MITSUBISHI"]], [/SUZUKI/, ["SUZUKI"]], [/JAGUAR|LAND ROVER/, ["JAGUAR"]],
+    [/CHRYSLER|DODGE|JEEP|FIAT|ALFA/, ["CHRYSLER", "DODGE", "JEEP"]], [/OPEL|VAUXHALL|CHEVROLET|GM|CADILLAC|BUICK/, ["GM", "CHEVY"]]];
+  BRAND = (map.find(([re]) => re.test(b)) || [null, []])[1];
+}
+
 function describeDtc(code) {
   const base = code.slice(0, 5);
-  const text = D[base];
+  let text = D[base], lang = "fr";
   const cat = (RANGES.find(([re]) => re.test(base)) || [null, "Code défaut"])[1];
-  return { description: text || null, category: cat };
+  if (!text) {
+    const e = en();
+    // codes constructeur (P1xxx, P3xxx, B/C/U 1xxx-2xxx…) : d'abord la marque, puis le générique
+    const manuf = /^[PBCU][13]|^[BCU]2/.test(base);
+    for (const m of BRAND) if (!text && e.mfr[m] && e.mfr[m][base]) text = e.mfr[m][base];
+    if (!text) text = e.generic[base];
+    if (text) lang = "en";
+  }
+  return { description: text || null, category: cat, lang };
 }
 
 function ftbText(b) { return FTB[b] ?? null; }
 
-module.exports = { describeDtc, ftbText };
+module.exports = { describeDtc, ftbText, setBrand };

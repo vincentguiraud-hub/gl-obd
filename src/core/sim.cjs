@@ -37,6 +37,7 @@ function makeModules(sim) {
     0x712: { resp: 0x77c, ecu: new FakeEcu({ ids: { F197: "EPS_ZFLS Kl.11", F187: "7C1909144A", F189: "2701", F1A3: "H04" }, dtcs: [] }) },
     0x746: { resp: 0x7b0, ecu: new FakeEcu({ ids: { F197: "Climatronic", F187: "7C0907044", F189: "0302", F1A3: "H03" }, dtcs: [] }) },
     0x74f: { resp: 0x7b9, ecu: new FakeEcu({ ids: { F197: "Frontkamera", F187: "3QD980654", F189: "0410", F1A3: "H06" }, dtcs: [] }) },
+    0xda28f1: { resp: 0x18daf128, ecu: new FakeEcu({ ids: { F197: "Body Control 29bit", F187: "TEST29" }, dids: { "1234": [0x01, 0xf4] }, dtcs: [] }) },
     0x70a: { resp: 0x774, ecu: new FakeEcu({ ids: { F197: "Parkhilfe 8K", F187: "2Q0919294", F189: "0204" }, dtcs: [[0xc1, 0x56, 0x00, 0x08]] }) },
     0x74a: { resp: 0x7b4, ecu: new FakeEcu({ ids: { F197: "TSG FT", F187: "7C0959593", F189: "0123" }, dtcs: [] }) },
     0x74b: { resp: 0x7b5, ecu: new FakeEcu({ ids: { F197: "TSG BT", F187: "7C0959592", F189: "0123" }, dtcs: [] }) },
@@ -74,7 +75,8 @@ class SimTransport extends EventEmitter {
     if (this.s.proto === "0") this.s.proto = "6";
     let bytes = c.match(/../g).map((x) => parseInt(x, 16));
     const lines = [];
-    const m = this.modules[this.s.sh];
+    let m = this.modules[this.s.sh];
+    if (m && (this.s.sh > 0xfff) !== (this.s.proto === "7")) m = null; // 29 bits seulement en protocole 7
     if (!this.s.caf) {
       // trame brute avec octet PCI (envoi multi-trames manuel)
       if (!m) return this.s.r ? "NO DATA" : "";
@@ -100,6 +102,7 @@ class SimTransport extends EventEmitter {
     if (a === "@1") return "G&L DEMO OBDII";
     if (a === "RV") return (Date.now() - this.t0 > 3000 ? 14.1 : 12.6).toFixed(1) + "V";
     if (a === "DPN") return s.proto === "0" ? "A6" : s.proto;
+    if (a.startsWith("CP")) return "OK";
     if (a === "DP") return "ISO 15765-4 (CAN 11/500)";
     if (a.startsWith("E")) { s.echo = a[1] === "1"; return "OK"; }
     if (a.startsWith("H")) { s.h = a[1] === "1"; return "OK"; }
@@ -113,7 +116,7 @@ class SimTransport extends EventEmitter {
   }
 
   frames(id, p, raw) {
-    const idh = id.toString(16).toUpperCase();
+    const idh = id > 0xfff ? id.toString(16).toUpperCase().padStart(8, "0").match(/../g).join(" ") : id.toString(16).toUpperCase();
     const fmt = (arr) => {
       while (arr.length < 8) arr.push(0xaa);
       return this.s.h ? `${idh} ${arr.map(h2).join(" ")}` : arr.map(h2).join(" ");

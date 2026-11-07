@@ -1,13 +1,13 @@
 {
   "name": "gl-obd",
   "productName": "G&L Diag",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "G&L Diag – logiciel de diagnostic OBD (ELM327) pour VW, Audi, Seat, Škoda, MAN et toutes marques",
   "author": "G&L Créations",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node test/core.test.cjs && node test/truck.test.cjs && node test/atelier.test.cjs && node test/tesla.test.cjs && node test/mileage.test.cjs && node test/clear.test.cjs && node test/obdb.test.cjs",
+    "test": "node test/core.test.cjs && node test/truck.test.cjs && node test/atelier.test.cjs && node test/tesla.test.cjs && node test/mileage.test.cjs && node test/clear.test.cjs && node test/obdb.test.cjs && node test/can29.test.cjs",
     "dist": "electron-builder --win nsis --x64"
   },
   "dependencies": {

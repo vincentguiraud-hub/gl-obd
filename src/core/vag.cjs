@@ -96,6 +96,7 @@ class Vag {
 
   async ensureCan() {
     if (this.elm.protocol === "6") return;
+    if (this.elm.protocol === "7") await this.elm.resetTarget();
     if (["7", "8", "9"].includes(this.elm.protocol) || !this.elm.isCan) {
       // Les VW récents sont en CAN 11 bits 500 kbit/s sur la prise OBD
       await this.elm.at("ATSP6");
@@ -104,9 +105,14 @@ class Vag {
     }
   }
 
+  // CAN 29 bits (adresses 18DAxxF1, utilisées par GM, Honda, Hyundai, Ford récents…)
+  async ensure29() {
+    if (this.elm.protocol !== "7") { await this.elm.resetTarget(); await this.elm.at("ATSP7"); this.elm.protocol = "7"; this.elm.state = {}; }
+  }
+
   async open(m, quick = false) {
-    await this.ensureCan();
-    await this.elm.target(hex3(m.req), hex3(m.resp));
+    if (m.ext) await this.ensure29(); else await this.ensureCan();
+    await this.elm.target(m.ext ? m.req.toString(16).toUpperCase().padStart(8, "0") : hex3(m.req), m.ext ? m.resp.toString(16).toUpperCase().padStart(8, "0") : hex3(m.resp));
     await this.elm.setTimeoutByte(quick ? "19" : "96");
   }
 
@@ -194,7 +200,7 @@ class Vag {
   }
 
   // Recherche de tous les calculateurs présents (0x700–0x77F, réponse +0x6A)
-  async discover(onProgress = () => {}) {
+  async discover(onProgress = () => {}, deep = true) {
     await this.ensureCan();
     const found = [];
     // VW : réponse = requête + 0x6A ; autres marques : + 8. Puis 7E0–7E7 (moteur, boîte, hybride…)
@@ -213,8 +219,23 @@ class Vag {
         if (r) found.push({ req, resp, name: r[0] === 0x62 ? ascii(r.slice(3)) : null });
       } catch {}
     }
+    // Autres marques : balayage complémentaire des 256 adresses en CAN 29 bits
+    if (this.generic && deep) {
+      for (let t = 0; t <= 0xff; t++) {
+        onProgress(t / 256, "29 bits " + t.toString(16).toUpperCase().padStart(2, "0"));
+        const m = { req: (0x18da00f1 | (t << 8)) >>> 0, resp: (0x18daf100 | t) >>> 0, ext: true };
+        try {
+          await this.open(m, true);
+          let r = null;
+          try { r = await this.elm.uds("22F197", 1500); } catch (e) { if (e.nrc !== undefined) r = []; }
+          if (r) found.push({ req: m.req, resp: m.resp, ext: true, name: r[0] === 0x62 ? ascii(r.slice(3)) : null });
+        } catch {}
+      }
+      await this.ensureCan();
+    }
     onProgress(1, "");
     return found.map((f) => {
+      if (f.ext) { const a = "DA" + ((f.req >> 8) & 0xff).toString(16).toUpperCase().padStart(2, "0"); return { addr: a, name: frenchName(f.name) || `Calculateur ${a} (29 bits)`, systemName: f.name, req: f.req, resp: f.resp, ext: true, reqHex: a, respHex: f.resp.toString(16).toUpperCase() }; }
       const known = (this.generic ? GENERIC : MODULES).find((k) => k.req === f.req);
       return { addr: known ? known.addr : hex3(f.req), name: known ? known.name : frenchName(f.name) || `Calculateur ${hex3(f.req)}`, systemName: f.name, req: f.req, resp: f.resp, reqHex: hex3(f.req), respHex: hex3(f.resp) };
     });

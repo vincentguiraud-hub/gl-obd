@@ -90,6 +90,7 @@ class Diag extends EventEmitter {
     try { voltage = await this.elm.voltage(); } catch {}
     try { ecus = await this.obd.ecuNames(); } catch {}
     const dec = decodeVin(vin);
+    require("./dtc.cjs").setBrand(dec.brand);
     this.vag.generic = !dec.vag && !!dec.brand;
     return {
       demo,
@@ -207,7 +208,7 @@ class Diag extends EventEmitter {
   oemGuess() { const i = this.info || {}; return require("./oem.cjs").guess(i.brand, i.vin, i.year); }
   oemSignals(id, year) {
     const oem = require("./oem.cjs");
-    return oem.load(id, year).map((c) => ({ key: `${c.hdr}:${c.svc}${c.did}`, hdr: c.hdr, svc: c.svc, did: c.did, ok: c.hdr.length === 3,
+    return oem.load(id, year).map((c) => ({ key: `${c.hdr}:${c.svc}${c.did}`, hdr: c.hdr, svc: c.svc, did: c.did, ok: true,
       signals: c.signals.map((x) => ({ id: x.id, name: x.name, cat: oem.catFr(x.cat), unit: oem.unitFr(x.unit), map: !!x.map })) }));
   }
   // Lit les commandes demandées (clés « hdr:svcdid ») et renvoie les valeurs décodées
@@ -216,16 +217,23 @@ class Diag extends EventEmitter {
     return this.run(async () => {
       this.need(); this.noTesla(); this.inVag = true;
       const oem = require("./oem.cjs");
-      const cmds = oem.load(id, year).filter((c) => keys.includes(`${c.hdr}:${c.svc}${c.did}`) && c.hdr.length === 3);
+      const cmds = oem.load(id, year).filter((c) => keys.includes(`${c.hdr}:${c.svc}${c.did}`));
       if (!this.truck) await this.vag.ensureCan();
       const out = {};
-      cmds.sort((a, b) => a.hdr.localeCompare(b.hdr));
+      cmds.sort((a, b) => a.hdr.length - b.hdr.length || a.hdr.localeCompare(b.hdr));
       for (let i = 0; i < cmds.length; i++) {
         if (this.scanCancelled) break;
         const c = cmds[i];
         if (i % 4 === 0) onProgress(i / cmds.length, `${c.hdr} ${c.svc}${c.did}`);
         try {
-          await this.elm.target(c.hdr, c.rax);
+          if (c.hdr.length === 4) { // 29 bits : 18 DA <cible> F1
+            const t = c.hdr.slice(2);
+            await this.vag.ensure29();
+            await this.elm.target(`18DA${t}F1`, `18DAF1${t}`);
+          } else {
+            await this.vag.ensureCan();
+            await this.elm.target(c.hdr, c.rax);
+          }
           await this.elm.setTimeoutByte("32");
           const r = await this.elm.uds(c.svc + c.did, 2500);
           if (!r || r[0] !== parseInt(c.svc, 16) + 0x40) continue;
@@ -236,6 +244,7 @@ class Diag extends EventEmitter {
           for (const s of c.signals) if (/odo|mileage|odometer/i.test(s.id + " " + s.name) && s.unit === "kilometers") this.mileageDids.add(`${parseInt(c.hdr, 16)}:${c.did}`);
         } catch (e) { if (e.nrc === undefined && !/réponse/.test(e.message)) throw e; }
       }
+      if (!this.truck) await this.vag.ensureCan();
       onProgress(1, "");
       return out;
     });
@@ -245,7 +254,6 @@ class Diag extends EventEmitter {
     const oem = require("./oem.cjs");
     const list = [];
     for (const c of oem.load(id, year)) {
-      if (c.hdr.length !== 3) continue;
       for (const s of c.signals) if (s.unit === "kilometers" && /(^|_)(ODO|ODOMETER|MILEAGE|KM_?STAND)(_|$)|odometer|total distance|mileage/i.test(s.id + " " + s.name) && !/since|clear|last|ago|service|interval|until|remain|kiss|replac|chang|counter|with ecu|dpf|scr|oxid|catalytic|adapt| at /i.test(s.name)) list.push({ key: `${c.hdr}:${c.svc}${c.did}`, hdr: c.hdr, did: c.did, id: s.id, name: s.name });
     }
     return list;
