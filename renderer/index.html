@@ -17,6 +17,7 @@
     <a data-page="defauts" class="notTesla"><i>⚠</i><span id="navDtc">Défauts moteur (OBD)</span></a>
     <a data-page="vag" class="notTesla"><i>▦</i><span id="navVag">Calculateurs</span></a>
     <a data-page="km" class="notTesla"><i>⏱</i>Vérifier le kilométrage</a>
+    <a data-page="oem" class="notTesla carOnly"><i>☰</i>Valeurs constructeur</a>
     <a data-page="atelier" class="notTesla"><i>⚙</i>Atelier calculateur</a>
     <a data-page="perf" class="notTesla carOnly"><i>🏁</i>Performance</a>
     <a data-page="live" class="notTesla"><i>◔</i>Données en direct</a>
@@ -192,6 +193,23 @@
     </div>
   </section>
 
+  <!-- VALEURS CONSTRUCTEUR -->
+  <section class="page hidden" id="page-oem">
+    <div class="row between"><h1>Valeurs constructeur</h1><div class="row"><span class="muted" id="oemRate"></span><button class="btn ghost" id="oemCsv">Exporter</button><button class="btn ghost" id="oemAll">Tout lire</button><button class="btn primary" id="oemLive">▶ Lire la sélection en continu</button></div></div>
+    <p class="muted">Base communautaire <b>OBDb</b> : plus de 640 véhicules et 240 000 valeurs nommées avec leur échelle (moteur, boîte, batterie, pneus, FAP, AdBlue, kilométrages…). Les noms sont en anglais, tels que publiés par la communauté. Lecture seule : rien n'est modifié dans le véhicule.</p>
+    <div class="card">
+      <div class="row wrap">
+        <label class="grow">Véhicule dans la base <select id="oemVeh"></select></label>
+        <label>Année <input id="oemYear" class="mono" size="6"></label>
+        <label class="grow">Catégorie <select id="oemCat"><option value="">Toutes</option></select></label>
+        <label class="grow">Rechercher <input id="oemQ" placeholder="ex. boost, oil, soot, AdBlue, odometer…"></label>
+      </div>
+      <div class="progress hidden" id="oemProg"><div></div><span></span></div>
+      <p class="muted small" id="oemCount"></p>
+    </div>
+    <div class="card flush"><table class="tbl dids" id="oemTable"><thead><tr><th></th><th>Calculateur</th><th>Valeur</th><th>Catégorie</th><th>Mesure</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
   <!-- PERFORMANCE -->
   <section class="page hidden" id="page-perf">
     <h1>Performance</h1>
@@ -352,5 +370,6 @@
 <script src="atelier.js"></script>
 <script src="tesla.js"></script>
 <script src="perf.js"></script>
+<script src="oem.js"></script>
 </body>
 </html>

@@ -215,6 +215,7 @@ function onConnected(info) {
   $("#navDtc").textContent = info.truck ? "Défauts (J1939)" : "Défauts moteur (OBD)";
   $("#dtcNote").textContent = info.truck ? "Défauts envoyés par tous les calculateurs du camion (norme J1939 : SPN = élément concerné, FMI = type de panne). Le détail par calculateur est dans « Calculateurs camion »." : "Codes génériques lus sur toutes les marques (norme OBD-II). Pour les autres calculateurs (ABS, airbag, tableau de bord…), va dans « Calculateurs ».";
   if (typeof A !== "undefined") A.mod = null;
+  if (!info.tesla && !info.truck && typeof omInit === "function") omInit().catch(() => {});
   initModules();
   const title = [info.brand || "Véhicule", info.model, info.year].filter(Boolean).join(" ");
   $("#vehSummary").innerHTML = `${esc(title)}<small>${esc(info.vin || "VIN non communiqué")}${info.demo ? " · DÉMO" : ""}</small>`;

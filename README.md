@@ -16,3 +16,7 @@ Logiciel Windows de diagnostic OBD pour adaptateur ELM327 (Bluetooth, WiFi, BLE)
 - Mode démo intégré
 
 Installation : télécharger `GL-Diag-Setup.exe` dans les Releases. Les mises à jour s'installent automatiquement.
+
+## Données tierces
+- `data/obdb/` : base communautaire **OBDb** (https://github.com/OBDb), licence **Creative Commons BY-SA 4.0** (voir `data/obdb/LICENSE-CC-BY-SA-4.0.txt`). Convertie par `tools/build-obdb.py`, sans modification des valeurs.
+- `data/tesla-model3y.dbc` : model3dbc © Josh Wardell, licence MIT.

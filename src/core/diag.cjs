@@ -202,6 +202,55 @@ class Diag extends EventEmitter {
   }
   cancelScan() { this.scanCancelled = true; }
 
+  // ---- Base constructeur OBDb : valeurs nommées ----
+  oemIndex() { return require("./oem.cjs").index(); }
+  oemGuess() { const i = this.info || {}; return require("./oem.cjs").guess(i.brand, i.vin, i.year); }
+  oemSignals(id, year) {
+    const oem = require("./oem.cjs");
+    return oem.load(id, year).map((c) => ({ key: `${c.hdr}:${c.svc}${c.did}`, hdr: c.hdr, svc: c.svc, did: c.did, ok: c.hdr.length === 3,
+      signals: c.signals.map((x) => ({ id: x.id, name: x.name, cat: oem.catFr(x.cat), unit: oem.unitFr(x.unit), map: !!x.map })) }));
+  }
+  // Lit les commandes demandées (clés « hdr:svcdid ») et renvoie les valeurs décodées
+  oemRead(id, year, keys, onProgress = () => {}) {
+    this.scanCancelled = false;
+    return this.run(async () => {
+      this.need(); this.noTesla(); this.inVag = true;
+      const oem = require("./oem.cjs");
+      const cmds = oem.load(id, year).filter((c) => keys.includes(`${c.hdr}:${c.svc}${c.did}`) && c.hdr.length === 3);
+      if (!this.truck) await this.vag.ensureCan();
+      const out = {};
+      cmds.sort((a, b) => a.hdr.localeCompare(b.hdr));
+      for (let i = 0; i < cmds.length; i++) {
+        if (this.scanCancelled) break;
+        const c = cmds[i];
+        if (i % 4 === 0) onProgress(i / cmds.length, `${c.hdr} ${c.svc}${c.did}`);
+        try {
+          await this.elm.target(c.hdr, c.rax);
+          await this.elm.setTimeoutByte("32");
+          const r = await this.elm.uds(c.svc + c.did, 2500);
+          if (!r || r[0] !== parseInt(c.svc, 16) + 0x40) continue;
+          const data = r.slice(1 + c.did.length / 2);
+          const vals = {};
+          for (const s of c.signals) { const v = oem.decode(s, data); if (v) vals[s.id] = v; }
+          out[`${c.hdr}:${c.svc}${c.did}`] = vals;
+          for (const s of c.signals) if (/odo|mileage|odometer/i.test(s.id + " " + s.name) && s.unit === "kilometers") this.mileageDids.add(`${parseInt(c.hdr, 16)}:${c.did}`);
+        } catch (e) { if (e.nrc === undefined && !/réponse/.test(e.message)) throw e; }
+      }
+      onProgress(1, "");
+      return out;
+    });
+  }
+  // Valeurs de kilométrage connues dans la base pour ce véhicule
+  oemOdometers(id, year) {
+    const oem = require("./oem.cjs");
+    const list = [];
+    for (const c of oem.load(id, year)) {
+      if (c.hdr.length !== 3) continue;
+      for (const s of c.signals) if (s.unit === "kilometers" && /(^|_)(ODO|ODOMETER|MILEAGE|KM_?STAND)(_|$)|odometer|total distance|mileage/i.test(s.id + " " + s.name) && !/since|clear|last|ago|service|interval|until|remain|kiss|replac|chang|counter|with ecu|dpf|scr|oxid|catalytic|adapt| at /i.test(s.name)) list.push({ key: `${c.hdr}:${c.svc}${c.did}`, hdr: c.hdr, did: c.did, id: s.id, name: s.name });
+    }
+    return list;
+  }
+
   // Vérification du kilométrage : compare le compteur avec les valeurs trouvées dans chaque calculateur
   // known : { "<référence pièce>": ["DID", ...] } valeurs déjà reconnues lors d'une recherche précédente
   checkMileage(modules, ref, ranges, known = {}, onProgress = () => {}) {

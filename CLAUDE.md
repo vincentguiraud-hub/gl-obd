@@ -11,6 +11,7 @@ Logiciel Windows (Electron) de diagnostic automobile de Vincent (G&L Créations)
   - `obd.cjs` OBD-II générique (modes 01–0A, mode 06, mode 09), `dtc.cjs` libellés des codes défaut
   - `vag.cjs` calculateurs groupe VW (UDS 11 bits), `uds.cjs` atelier calculateur (identification, codage, DID, routines)
   - `hd.cjs` + `spn.cjs` poids lourds J1939 / MAN, `tesla.cjs` + `dbc.cjs` Tesla (DBC dans `data/`)
+  - `oem.cjs` base constructeur OBDb (`data/obdb/`, 640+ véhicules, valeurs nommées avec échelle ; régénérée par `tools/build-obdb.py`)
   - `diag.cjs` façade utilisée par `main.cjs` ; `transports.cjs` USB/COM, WiFi, BLE
   - `sim*.cjs`, `fakeecu.cjs` : simulateurs du mode démo (VW Crafter, MAN TGX, Tesla Model Y)
 - `renderer/` : interface (HTML/CSS/JS sans framework) : `app.js`, `atelier.js`, `tesla.js`, `report.js` (rapport PDF)

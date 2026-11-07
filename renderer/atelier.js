@@ -214,7 +214,7 @@ function renderDids() {
     const v = A.vals[d.did] || d, p = A.prev[d.did];
     const hex = p && p.hex !== v.hex ? v.hex.split(" ").map((x, i) => (p.hex.split(" ")[i] !== x ? `<span class="hl">${x}</span>` : x)).join(" ") : esc(v.hex);
     return `<tr class="${A.changed.has(d.did) ? "moved" : ""}"><td><input type="checkbox" data-meas="${d.did}" ${A.meas.includes(d.did) ? "checked" : ""} title="Suivre en direct" style="width:auto"></td>
-      <td class="mono">${d.did}</td><td><input class="lbl" data-name="${d.did}" value="${esc(lab(d.did).name || d.name || "")}" placeholder="—"></td>
+      <td class="mono">${d.did}</td><td><input class="lbl" data-name="${d.did}" value="${esc(lab(d.did).name || d.name || (window.oemNameFor && window.oemNameFor(A.mod.reqHex, d.did)) || "")}" placeholder="—"></td>
       <td class="mono">${hex}</td><td>${esc(v.ascii || "")}</td><td>${numText(v)}</td><td><button class="btn link" data-edit="${d.did}">Modifier</button></td></tr>`;
   }).join("") || `<tr><td colspan="7" class="muted" style="padding:20px">Aucune valeur.</td></tr>`;
   $$("#didTable [data-name]").forEach((i) => (i.onchange = () => setLab(i.dataset.name, { name: i.value })));

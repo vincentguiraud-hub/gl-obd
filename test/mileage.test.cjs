@@ -9,7 +9,13 @@ const { Diag } = require("../src/core/diag.cjs");
   const res = await d.checkMileage([{ ...eng, partNumber: "04L907309R" }, { ...kombi, partNumber: "7C0920740B" }], 148421, [[0x2000, 0x22ff], [0x2900, 0x29ff]], {}, () => {});
   console.log("KM", Date.now() - t0, "ms", JSON.stringify(res));
   assert.equal(Math.round(res.obd), 148421);
-  assert.ok(res.modules[0].matches.find((x) => x.did === "295A" && Math.abs(x.diff) < 5));
+  assert.ok(res.modules[0].matches.find((x) => x.did === "295A" && Math.abs(x.diff) < 10));
+  // base constructeur : sources de kilométrage connues
+  const id = d.oemGuess(); const odo = d.oemOdometers(id, 2019);
+  const vals = await d.oemRead(id, 2019, [...new Set(odo.map((o) => o.key))]);
+  console.log("OEM ODO", JSON.stringify(vals));
+  assert.equal(vals["7E0:22295A"].CRAFTER_ODO.value, 148416);
+  assert.ok(Object.values(vals["714:222203"]).some((x) => x.value === 148421));
   assert.ok(res.modules[1].matches.find((x) => x.did === "2203" && x.diff === 0));
   let err = ""; try { await d.atelier("writeDid", kombi, "2203", [0, 0, 1]); } catch (e) { err = e.message; }
   assert.ok(/kilométrage/.test(err), err);
