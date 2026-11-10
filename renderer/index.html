@@ -17,6 +17,7 @@
     <a data-page="defauts" class="notTesla"><i>⚠</i><span id="navDtc">Défauts moteur (OBD)</span></a>
     <a data-page="vag" class="notTesla"><i>▦</i><span id="navVag">Calculateurs</span></a>
     <a data-page="km" class="notTesla"><i>⏱</i>Vérifier le kilométrage</a>
+    <a data-page="tune" class="notTesla carOnly"><i>🔍</i>Reprogrammation ?</a>
     <a data-page="oem" class="notTesla carOnly"><i>☰</i>Valeurs constructeur</a>
     <a data-page="atelier" class="notTesla"><i>⚙</i>Atelier calculateur</a>
     <a data-page="perf" class="notTesla carOnly"><i>🏁</i>Performance</a>
@@ -191,6 +192,17 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- REPROGRAMMATION -->
+  <section class="page hidden" id="page-tune">
+    <div class="row between"><h1>Le moteur a-t-il été reprogrammé ?</h1><button class="btn primary" id="tuneBtn">Contrôler</button></div>
+    <p class="muted">Le logiciel croise plusieurs indices : identité et sommes de contrôle du logiciel moteur, date et empreinte de la dernière programmation, et puissance mesurée dans l'onglet Performance. Une bonne reprogrammation peut masquer ses traces : seul un concessionnaire (comparaison en ligne avec le constructeur) ou un préparateur qui lit le calculateur peut le confirmer à 100 %.</p>
+    <div class="card"><div class="row wrap">
+      <label>Puissance d'origine (carte grise, case P.2) <span class="row"><input id="tuneKw" class="mono" style="width:90px"> kW</span></label>
+      <label>Année de première mise en circulation <input id="tuneYear" class="mono" style="width:90px"></label>
+    </div></div>
+    <div id="tuneOut"></div>
   </section>
 
   <!-- VALEURS CONSTRUCTEUR -->

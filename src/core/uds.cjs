@@ -19,7 +19,7 @@ const ID_DIDS = [
   ["F181", "Logiciel application"], ["F182", "Données d'étalonnage"], ["F17C", "Code FAZIT (VW)"],
   ["F198", "Code atelier (dernier codage)"], ["F199", "Date de programmation"], ["F19E", "Fichier de données ODX/ASAM (VW)"],
   ["F1A2", "Version du jeu de données (VW)"], ["F1AA", "Nom du système atelier (VW)"], ["F1DF", "État de programmation"],
-  ["F186", "Session active"], ["0600", "Codage long (VW)"],
+  ["F15B", "Empreinte de programmation (VW)"], ["F186", "Session active"], ["0600", "Codage long (VW)"],
 ];
 const DID_NAMES = Object.fromEntries(ID_DIDS);
 

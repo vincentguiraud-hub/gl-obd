@@ -178,3 +178,53 @@ $("#chBtn").onclick = async () => {
   store.set(vinKey() + ":chrono", last);
   PF.ch.on = false; S.working = false; $("#chBtn").textContent = "▶ Armer les chronos"; renderChronos();
 };
+
+
+// ================= REPROGRAMMATION ? =================
+const tuneKey = () => "tune:" + (S.info?.vin || "?");
+document.querySelector('#nav a[data-page=tune]').addEventListener("click", () => {
+  const t = store.get(tuneKey(), {});
+  $("#tuneKw").value = t.kw || ""; $("#tuneYear").value = t.year || S.info?.year || "";
+});
+$("#tuneBtn").onclick = () => needConn() && busy($("#tuneBtn"), async () => {
+  const saved = store.get(tuneKey(), {});
+  const kw = parseFloat($("#tuneKw").value.replace(",", ".")) || null, year = parseInt($("#tuneYear").value, 10) || null;
+  const r = await diag.tuneCheck();
+  const ids = r.ids, txt = (d) => ids[d]?.ascii || ids[d]?.hex || null;
+  const cvn = r.cvns.map((c) => c.hex).join(" "), calid = r.calids.map((c) => c.text.replace(/\s+/g, " ")).join(" | ");
+  const signs = []; // [niveau, texte]
+  // 1. sommes de contrôle : changement depuis le premier contrôle
+  if (cvn) {
+    if (saved.cvn && saved.cvn !== cvn) signs.push(["bad", `Le logiciel moteur a changé depuis ton contrôle du ${new Date(saved.cvnDate).toLocaleDateString("fr-FR")} (somme de contrôle ${saved.cvn} → ${cvn}). Mise à jour en concession ou reprogrammation.`]);
+    else if (saved.cvn) signs.push(["ok", `Somme de contrôle du logiciel moteur identique à celle du ${new Date(saved.cvnDate).toLocaleDateString("fr-FR")}.`]);
+    else signs.push(["info", `Somme de contrôle du logiciel moteur enregistrée (${cvn}). Les prochains contrôles signaleront toute modification à partir d'aujourd'hui.`]);
+  } else signs.push(["info", "Ce moteur ne donne pas la somme de contrôle de son logiciel (CVN)."]);
+  // 2. cohérence identifiant d'étalonnage OBD / version logicielle constructeur
+  const sw = txt("F189"), part = txt("F188") || txt("F187");
+  if (calid && sw && part) {
+    const okId = calid.replace(/\s/g, "").includes(part.replace(/\s/g, "")) || calid.includes(sw);
+    signs.push(okId ? ["ok", `Identifiant d'étalonnage cohérent avec la référence et la version du logiciel (${part} / ${sw}).`]
+      : ["warn", `L'identifiant d'étalonnage OBD (${calid}) ne correspond pas à la référence / version du calculateur (${part} / ${sw}). Peut venir d'une reprogrammation, ou d'une particularité du constructeur.`]);
+  }
+  // 3. date de dernière programmation
+  const pdate = r.fingerprint?.date || (txt("F199") && /^\d{6}$/.test(txt("F199")) ? `${txt("F199").slice(4, 6)}/${txt("F199").slice(2, 4)}/20${txt("F199").slice(0, 2)}` : null);
+  if (pdate) {
+    const py = parseInt(pdate.slice(-4), 10);
+    signs.push(year && py > year ? ["warn", `Le calculateur moteur a été programmé le ${pdate}, après la mise en circulation (${year}) : mise à jour en concession (fréquent) ou reprogrammation.${r.fingerprint ? " Empreinte : " + r.fingerprint.raw : ""}`]
+      : ["ok", `Dernière programmation du calculateur : ${pdate} (d'origine ou proche de la sortie d'usine).`]);
+  } else signs.push(["info", "Date de dernière programmation non communiquée par le calculateur."]);
+  // 4. puissance mesurée (onglet Performance)
+  const bestRun = runs().filter((x) => x.how === "couple").sort((a, b) => b.sm.pMax - a.sm.pMax)[0];
+  if (kw && bestRun) {
+    const gain = ((bestRun.sm.pMax - kw) / kw) * 100;
+    signs.push(gain > 10 ? ["bad", `Puissance mesurée ${fmt(bestRun.sm.pMax, 0)} kW pour ${fmt(kw, 0)} kW d'origine : +${fmt(gain, 0)} %. Fort indice de reprogrammation.`]
+      : ["ok", `Puissance mesurée ${fmt(bestRun.sm.pMax, 0)} kW pour ${fmt(kw, 0)} kW d'origine (${gain >= 0 ? "+" : ""}${fmt(gain, 0)} %) : normal.`]);
+  } else signs.push(["info", kw ? "Fais une mesure dans l'onglet Performance pour comparer la puissance réelle à celle de la carte grise." : "Indique la puissance de la carte grise (P.2) et fais une mesure dans l'onglet Performance : c'est l'indice le plus parlant."]);
+  store.set(tuneKey(), { kw, year, cvn: saved.cvn || cvn || null, cvnDate: saved.cvnDate || (cvn ? new Date().toISOString() : null) });
+  const nBad = signs.filter((x) => x[0] === "bad").length, nWarn = signs.filter((x) => x[0] === "warn").length;
+  const v = nBad ? ["bad", "⚠", "Indices forts de reprogrammation"] : nWarn ? ["warn", "?", "Quelques indices, à confirmer"] : ["ok", "✓", "Aucun indice de reprogrammation"];
+  $("#tuneOut").innerHTML = `<div class="verdict ${v[0]}"><span class="big">${v[1]}</span><div><b>${v[2]}</b>${nBad || nWarn ? "Fais confirmer par un concessionnaire ou un préparateur." : "Une reprogrammation très bien faite peut ne laisser aucune trace visible par la prise OBD."}</div></div>
+    ${signs.map(([c, t]) => `<div class="dtc ${c === "bad" ? "" : c === "warn" ? "warn" : "info"}" style="margin-top:8px"><div class="code" style="min-width:30px">${c === "ok" ? "✓" : c === "info" ? "i" : "!"}</div><div class="desc">${esc(t)}</div></div>`).join("")}
+    <div class="card"><h2>Identité du logiciel moteur</h2><div class="kv">${[["Référence", part], ["Version logicielle", sw], ["Référence matériel", txt("F191")], ["Jeu de données", txt("F19E")], ["Identifiant d'étalonnage (OBD)", calid || null], ["Somme de contrôle (CVN)", cvn || null], ["Date de programmation", pdate], ["Code atelier", txt("F198")]].filter(([, x]) => x).map(([k, x]) => `<div><span>${k}</span><b>${esc(x)}</b></div>`).join("")}</div>
+    <p class="muted small">Garde cette fiche : à la revente ou à l'achat, compare-la avec celle d'un contrôle en concession.</p></div>`;
+}).catch(() => {});

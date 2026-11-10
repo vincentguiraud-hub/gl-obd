@@ -203,6 +203,29 @@ class Diag extends EventEmitter {
   }
   cancelScan() { this.scanCancelled = true; }
 
+  // Contrôle de reprogrammation : identifiants du logiciel moteur, empreinte et sommes de contrôle (CVN)
+  tuneCheck() {
+    return this.run(async () => {
+      this.need(); this.noTesla();
+      const res = { calids: [], cvns: [], ids: {}, fingerprint: null };
+      if (!this.truck) { await this.leaveVag(); try { const m9 = await this.obd.mode09(); res.calids = m9.calids; res.cvns = m9.cvns; } catch {} }
+      this.inVag = true;
+      const eng = this.truck ? { sa: 0, addr: "00" } : { addr: "01", req: 0x7e0, resp: 0x7e8 };
+      for (const did of ["F187", "F188", "F189", "F191", "F1A3", "F19E", "F1A2", "F18C", "F199", "F198", "F15B", "F1DF"]) {
+        try { const b = await this.uds.did(eng, did, true); if (b) res.ids[did] = require("./uds.cjs").interpret(b); } catch {}
+      }
+      // Empreinte VW (F15B) : souvent date (AA MM JJ) + code atelier + n° de testeur de la dernière programmation
+      const fp = res.ids.F15B;
+      if (fp && fp.len >= 6) {
+        const b = fp.hex.split(" ").map((x) => parseInt(x, 16));
+        const bcd = (x) => ((x >> 4) * 10) + (x & 15);
+        const y = bcd(b[0]), mo = bcd(b[1]), d = bcd(b[2]);
+        res.fingerprint = { raw: fp.hex, date: mo >= 1 && mo <= 12 && d >= 1 && d <= 31 ? `${String(d).padStart(2, "0")}/${String(mo).padStart(2, "0")}/20${String(y).padStart(2, "0")}` : null };
+      }
+      return res;
+    });
+  }
+
   // ---- Base constructeur OBDb : valeurs nommées ----
   oemIndex() { return require("./oem.cjs").index(); }
   oemGuess() { const i = this.info || {}; return require("./oem.cjs").guess(i.brand, i.vin, i.year); }

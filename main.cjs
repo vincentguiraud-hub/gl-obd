@@ -52,6 +52,7 @@ const api = {
   supportedPids: () => diag.supportedPids(),
   readPids: (pids) => diag.readPids(pids),
   supportedRaw: () => diag.supportedRaw(),
+  tuneCheck: () => diag.tuneCheck(),
   oemIndex: () => diag.oemIndex(),
   oemGuess: () => diag.oemGuess(),
   oemSignals: (id, year) => diag.oemSignals(id, year),
