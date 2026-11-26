@@ -4,8 +4,11 @@
 // ================= PERFORMANCE =================
 const PF = { on: false, sup: null, ref: null, baro: null, samples: [], ch: { on: false } };
 const vinKey = () => "perf:" + (S.info?.vin || "?");
-$("#pfMass").value = store.get("pfMass", 2500);
-$("#pfMass").onchange = () => store.set("pfMass", +$("#pfMass").value || 2500);
+// masse mémorisée par véhicule (Crafter ≈ 2 500 kg, Q3 ≈ 1 700 kg avec le conducteur)
+const massKey = () => "pfMass:" + (S.info?.vin || "?");
+const loadMass = () => ($("#pfMass").value = store.get(massKey(), store.get("pfMass", 2500)));
+loadMass();
+$("#pfMass").onchange = () => store.set(massKey(), +$("#pfMass").value || 2500);
 const runs = () => store.get(vinKey(), []);
 
 async function pfPrepare() {
@@ -21,9 +24,10 @@ function tile(n, v, u, d = 0) { return `<div class="tile"><div class="n">${esc(n
 // puissance : couple réel (% × couple de référence) × régime ; sinon estimation par l'accélération
 function power(s, prev, mass) {
   if (s.tq !== null && PF.ref) { const t = (s.tq / 100) * PF.ref; return { t, p: (t * s.rpm) / 9549, how: "couple" }; }
-  if (!prev || s.v === null || prev.v === null) return { t: null, p: null };
-  const dt = (s.t - prev.t) / 1000, v = s.v / 3.6, a = (s.v - prev.v) / 3.6 / dt;
-  const p = (mass * a * v + 0.5 * 1.2 * 3.2 * v ** 3 + mass * 9.81 * 0.012 * v) / 1000; // résistance air (Crafter ≈ 3,2 m²) + roulement
+  if (!prev || s.v === null || prev.v === null || s.ms === prev.ms) return { t: null, p: null };
+  const dt = (s.ms - prev.ms) / 1000, v = s.v / 3.6, a = (s.v - prev.v) / 3.6 / dt;
+  const area = mass > 2200 ? 3.2 : 2.4; // surface frontale : utilitaire ≈ 3,2 m², voiture / SUV ≈ 2,4 m²
+  const p = (mass * a * v + 0.5 * 1.2 * area * v ** 3 + mass * 9.81 * 0.012 * v) / 1000; // résistance de l'air + roulement
   return { t: s.rpm ? (p * 9549) / s.rpm : null, p, how: "estimation" };
 }
 
@@ -32,25 +36,22 @@ $("#pfBtn").onclick = async () => {
   if (!needConn()) return;
   try { await pfPrepare(); } catch (e) { return toast(cleanErr(e), true); }
   if (!PF.pids.includes(0x0c)) return toast("Ce moteur ne donne pas son régime en OBD : mesure impossible.", true);
-  PF.on = true; PF.samples = []; S.working = true;
+  PF.on = true; S.working = true;
   $("#pfBtn").textContent = "■ Arrêter"; $("#pfBtn").classList.remove("primary");
   const mass = +$("#pfMass").value || 2500;
-  let peak = 0, prev = null;
+  const tr = new PerfCalc.PerfTrack(); PF.track = tr; PF.samples = tr.samples;
+  let prev = null;
   try {
     while (PF.on) {
       const r = await diag.readPids(PF.pids);
-      const s = { t: performance.now(), rpm: r[0x0c] ?? 0, v: r[0x0d] ?? null, tq: r[0x62] ?? null, map: r[0x0b] ?? null, maf: r[0x10] ?? null,
+      const s = { ms: performance.now(), rpm: r[0x0c] ?? 0, v: r[0x0d] ?? null, tq: r[0x62] ?? null, map: r[0x0b] ?? null, maf: r[0x10] ?? null,
         boost: r[0x70] || null, pedal: r[0x49] ?? null, egr: r[0x2d] ?? null, cool: r[0x05] ?? null };
       Object.assign(s, power(s, prev, mass)); prev = s;
-      PF.samples.push(s);
-      peak = Math.max(peak, s.rpm);
+      tr.push(s);
       const boostAct = s.boost?.act ?? s.map;
-      $("#pfLive").innerHTML = tile("Régime", s.rpm, "tr/min") + tile("Puissance", s.p != null ? s.p * 1.36 : null, "ch") + tile("Couple", s.t, "Nm") + tile("Turbo (réel)", boostAct != null ? (boostAct - PF.baro) / 100 : null, "bar", 2);
+      $("#pfLive").innerHTML = tile("Régime", s.rpm, "tr/min") + tile("Puissance", s.p != null && !s.shift ? s.p * 1.36 : null, "ch") + tile("Couple", s.shift ? null : s.t, "Nm") + tile("Turbo (réel)", boostAct != null ? (boostAct - PF.baro) / 100 : null, "bar", 2) + tile("Passages de rapport", tr.shifts, s.shift ? "en cours…" : "");
       drawPf(PF.samples, best());
-      // fin automatique : le pied est relâché après être monté dans les tours
-      const wot = s.pedal == null ? true : s.pedal > 80;
-      if (PF.samples.length > 15 && peak > 2500 && (!wot || s.rpm < peak - 600)) break;
-      if (PF.samples.length > 3000) break;
+      if (tr.done()) break;
     }
   } catch (e) { toast(cleanErr(e), true); }
   PF.on = false; S.working = false;
@@ -58,17 +59,7 @@ $("#pfBtn").onclick = async () => {
   finishRun();
 };
 
-// courbe : maxi par tranche de 100 tr/min, pied à fond seulement
-function curve(samples) {
-  const bins = new Map();
-  for (const s of samples) {
-    if (s.p == null || s.p <= 0 || (s.pedal != null && s.pedal < 80)) continue;
-    const k = Math.round(s.rpm / 100) * 100;
-    const b = bins.get(k);
-    if (!b || s.p > b.p) bins.set(k, { rpm: k, p: s.p, t: s.t, boost: s.boost, map: s.map, maf: s.maf, egr: s.egr });
-  }
-  return [...bins.values()].sort((a, b) => a.rpm - b.rpm);
-}
+const curve = (samples) => PerfCalc.curve(samples);
 function summary(c) {
   if (!c.length) return null;
   const pm = c.reduce((a, b) => (b.p > a.p ? b : a)), tm = c.reduce((a, b) => (b.t > a.t ? b : a));
@@ -123,7 +114,7 @@ function finishRun() {
   const c = curve(PF.samples), sm = summary(c);
   if (!sm) { $("#pfResult").innerHTML = `<p class="err">Pas assez de données pied à fond pour tracer une courbe. Recommence en restant pied au plancher jusqu'au régime maxi.</p>`; return; }
   const all = runs(), refRun = all.find((x) => x.ref) || all[0];
-  const how = PF.samples.find((x) => x.how)?.how;
+  const how = PF.samples.find((x) => x.how)?.how, nShift = PF.track?.shifts || 0;
   const run = { date: new Date().toISOString(), curve: c, sm, how, ref: !all.length };
   all.unshift(run); store.set(vinKey(), all.slice(0, 30));
   const d = diagnose(sm, refRun?.sm);
@@ -131,6 +122,7 @@ function finishRun() {
     ["Turbo demandé / réel", sm.boostCmd ? `${fmt((sm.boostCmd - PF.baro) / 100, 2)} / ${fmt((sm.boostAct - PF.baro) / 100, 2)} bar` : sm.boostAct ? `réel ${fmt((sm.boostAct - PF.baro) / 100, 2)} bar` : "—"],
     ["Débit d'air maxi", sm.mafMax ? `${fmt(sm.mafMax, 0)} g/s` : "—"]].map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("")}</div>
     ${how === "estimation" ? `<p class="muted small">Ce moteur ne donne pas son couple réel : puissance estimée à partir de l'accélération et de la masse indiquée (précision ± 10 %).</p>` : `<p class="muted small">Puissance calculée à partir du couple réel transmis par le calculateur moteur.</p>`}
+    ${nShift ? `<p class="muted small">${nShift} passage${nShift > 1 ? "s" : ""} de rapport détecté${nShift > 1 ? "s" : ""} : les instants de changement sont écartés et la courbe regroupe tous les rapports.</p>` : ""}
     ${d.map(([c2, t]) => `<div class="dtc ${c2 === "ok" ? "info" : c2 === "warn" ? "warn" : c2 === "info" ? "info" : ""}" style="margin-top:8px"><div class="desc">${esc(t)}</div></div>`).join("")}`;
   renderRuns();
 }
@@ -142,7 +134,7 @@ function renderRuns() {
   $$("[data-pfref]").forEach((b) => (b.onclick = () => { const a = runs(); a.forEach((x, i) => (x.ref = i === +b.dataset.pfref)); store.set(vinKey(), a); renderRuns(); drawPf([], best()); }));
   $$("[data-pfdel]").forEach((b) => (b.onclick = async () => { if (!await confirmBox("Supprimer cette mesure ?", "", "Supprimer")) return; const a = runs(); const was = a[+b.dataset.pfdel].ref; a.splice(+b.dataset.pfdel, 1); if (was && a.length) a[a.length - 1].ref = true; store.set(vinKey(), a); renderRuns(); }));
 }
-document.querySelector('#nav a[data-page=perf]').addEventListener("click", () => { renderRuns(); if (!PF.on) drawPf([], best()); renderChronos(); });
+document.querySelector('#nav a[data-page=perf]').addEventListener("click", () => { loadMass(); renderRuns(); if (!PF.on) drawPf([], best()); renderChronos(); });
 
 // ---------- chronos ----------
 function renderChronos(cur) {
